@@ -212,6 +212,14 @@ class DiffusionEvalConfig:
                     "YAML",
                     f"{dataset_name}-{dataset._unchunk_size}",
                 )
+            elif benchmark.endswith(".json"):
+                dataset_name = os.path.splitext(os.path.basename(benchmark))[0]
+                dirpath = os.path.join(
+                    gen_root,
+                    "samples",
+                    "JSON",
+                    f"{dataset_name}-{dataset._unchunk_size}",
+                )
             else:
                 dataset_name = dataset.config_name
                 dirpath = os.path.join(
