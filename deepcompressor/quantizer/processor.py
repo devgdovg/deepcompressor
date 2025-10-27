@@ -6,6 +6,9 @@ from dataclasses import _MISSING_TYPE, MISSING, dataclass
 
 import torch
 
+from deepcompressor.data.common import TensorType
+from deepcompressor.utils import tools
+
 from ..data.range import DynamicRange, QuantRange, RangeBound
 from ..data.tensor import QuantTensor
 from ..nn.patch.lowrank import LowRankBranch
@@ -88,7 +91,11 @@ class Quantizer(QuantizerImpl, BaseTensorProcessor):
         return self.output_packager
 
     def process(self, tensor: torch.Tensor) -> torch.Tensor:
-        return self.quantize(tensor).data
+        _in_place = hasattr(self, 'tensor_type') and self.tensor_type == TensorType.Inputs and self.key == "up_resblock_conv"
+        if _in_place:
+            logger = tools.logging.getLogger(__name__)
+            logger.info(f"** quantizer process key:{self.key}, type:{type(self)}, in_place:{_in_place}")
+        return self.quantize(tensor, in_place=_in_place).data
 
     def quantize(
         self,
@@ -111,6 +118,7 @@ class Quantizer(QuantizerImpl, BaseTensorProcessor):
         quant_range: QuantRange | None | _MISSING_TYPE = MISSING,
         default_dtype: torch.dtype | None | _MISSING_TYPE = MISSING,
         develop_dtype: torch.dtype | _MISSING_TYPE = MISSING,
+        in_place: bool = False,
         **kwargs,
     ) -> QuantTensor:
         """Quantize a tensor.
@@ -143,6 +151,8 @@ class Quantizer(QuantizerImpl, BaseTensorProcessor):
                 The default scale dtype.
             develop_dtype (`torch.dtype` or `_MISSING_TYPE`, *optional*, defaults to `MISSING`):
                 The quantization development dtype.
+            in_place (`bool`):
+                Whether to quantize the tensor in place.
             **kwargs:
                 Other keyword arguments for the quantization kernel. For example,
                 ``inputs`` for the input tensors in GPTQ kernel,
@@ -179,6 +189,7 @@ class Quantizer(QuantizerImpl, BaseTensorProcessor):
             return_with_quant=return_with_quant,
             default_dtype=default_dtype,
             develop_dtype=develop_dtype,
+            in_place=in_place,
             **kwargs,
         )
 

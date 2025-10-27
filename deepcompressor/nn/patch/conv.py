@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.common_types import _size_2_t
 
-__all__ = ["ConcatConv2d", "ShiftedConv2d"]
+__all__ = ["ConcatConv2d", "ShiftedConv2d", "Conv2dAsLinear"]
 
 
 class ConcatConv2d(nn.Module):
@@ -180,3 +180,66 @@ class ShiftedConv2d(nn.Module):
         else:
             shifted.conv.bias.data.copy_(-shifted_bias.to(dtype))
         return shifted
+
+
+class Conv2dAsLinear(nn.Module):
+    def __init__(self, conv: nn.Conv2d):
+        super().__init__()
+        assert isinstance(conv, nn.Conv2d)
+        self.in_channels = conv.in_channels
+        self.out_channels = conv.out_channels
+        self.kernel_size = conv.kernel_size
+        self.stride = conv.stride
+        self.padding = conv.padding
+        self.bias_flag = conv.bias is not None
+
+        # -------------------------------
+        # unfold Conv2d's weight and bias to Linear
+        # Conv2d.weight.shape = [out_channels, in_channels, kH, kW]
+        # Linear.weight.shape = [out_features, in_features]
+        # in_features = in_channels * kH * kW
+        # out_features = out_channels
+        # -------------------------------
+        kH, kW = self.kernel_size
+        self.linear = nn.Linear(
+            in_features=self.in_channels * kH * kW,
+            out_features=self.out_channels,
+            bias=self.bias_flag,
+            device=conv.weight.device,
+            dtype=conv.weight.dtype
+        )
+
+        # copy parameters
+        with torch.no_grad():
+            self.linear.weight.copy_(conv.weight.view(self.out_channels, -1))
+            if self.bias_flag:
+                self.linear.bias.copy_(conv.bias)
+
+    def forward(self, x: torch.Tensor):
+        # input: x.shape = [N, C_in, H, W]
+        # output: y.shape = [N, C_out, H_out, W_out]
+        N, C, H, W = x.shape
+
+        # 1. unfold
+        # after unfolding: x_unf.shape = [N, C*kH*kW, L]，其中 L = H_out * W_out
+        x_unf = F.unfold(
+            x,
+            kernel_size=self.kernel_size,
+            stride=self.stride,
+            padding=self.padding
+        )
+
+        # 2. transpose: [N, L, C*kH*kW]
+        x_unf = x_unf.transpose(1, 2)
+
+        # 3. pass through linear layer
+        # output shape: [N, L, C_out]
+        y: torch.Tensor = self.linear(x_unf)
+
+        # 4. transpose back and reshape
+        # output shape: [N, C_out, H_out, W_out]
+        H_out = (H + 2 * self.padding[0] - self.kernel_size[0]) // self.stride[0] + 1
+        W_out = (W + 2 * self.padding[1] - self.kernel_size[1]) // self.stride[1] + 1
+        y = y.transpose(1, 2).reshape(N, self.out_channels, H_out, W_out)
+
+        return y

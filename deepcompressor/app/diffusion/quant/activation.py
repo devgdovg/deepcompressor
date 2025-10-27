@@ -10,7 +10,9 @@ from tqdm import tqdm
 
 from deepcompressor.data.cache import IOTensorsCache
 from deepcompressor.data.common import TensorType
+from deepcompressor.nn.patch.conv import Conv2dAsLinear
 from deepcompressor.utils import tools
+from deepcompressor.utils.common import join_name
 
 from ..nn.struct import (
     DiffusionAttentionStruct,
@@ -124,11 +126,20 @@ def quantize_diffusion_block_activations(  # noqa: C901
                     assert field_name == "add_k_proj"
                     assert module_name == parent.add_k_proj_name
                     modules, module_names = parent.add_qkv_proj, parent.add_qkv_proj_names
+        elif isinstance(module, Conv2dAsLinear):
+            modules = [module.linear]
+            module_names = [join_name(module_name, "linear")]
+            eval_module = module
+            eval_name = module_name
+            eval_kwargs = layer_kwargs if layer_kwargs else {}
         if modules is None:
             assert module not in used_modules
             used_modules.add(module)
             orig_wgts = [(module.weight, orig_state_dict[f"{module_name}.weight"])] if orig_state_dict else None
             args_caches.append((module_key, In, [module], [module_name], module, module_name, None, orig_wgts))
+        elif isinstance(module , Conv2dAsLinear):
+            orig_wgts = [(module.linear.weight, orig_state_dict[f"{join_name(module_name, "linear")}.weight"])] if orig_state_dict else None
+            args_caches.append((module_key, In, modules, module_names, eval_module, eval_name, eval_kwargs, orig_wgts))
         else:
             orig_wgts = []
             for proj_module in modules:
@@ -166,6 +177,8 @@ def quantize_diffusion_block_activations(  # noqa: C901
             key=module_key,
             tensor_type=tensor_type,
         )
+        if isinstance(eval_module, Conv2dAsLinear):
+            logger.info(f"[calib_dynamic_range]Conv2dAsLinear eval_name: {eval_name}, module_names: {module_names}, quantizer.is_enabled: {quantizer.is_enabled()}")
         if quantizer.is_enabled():
             if cache_keys[0] not in quantizer_state_dict:
                 logger.debug("- Calibrating %s", ", ".join(cache_keys))

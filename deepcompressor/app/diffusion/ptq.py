@@ -383,6 +383,9 @@ if __name__ == "__main__":
     try:
         main(config, logging_level=tools.logging.DEBUG)
     except Exception as e:
+        torch.cuda.synchronize()
+        torch.cuda.memory._dump_snapshot("/data/dongd/ptq_err_snapshot.pickle")
+        torch.cuda.memory._record_memory_history(enabled=None)
         tools.logging.Formatter.indent_reset()
         tools.logging.error("=== Error ===")
         tools.logging.error(traceback.format_exc())

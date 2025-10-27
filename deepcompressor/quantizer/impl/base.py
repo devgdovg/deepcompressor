@@ -64,6 +64,7 @@ class QuantizerImpl:
         return_with_quant: bool = False,
         default_dtype: torch.dtype | None = torch.float16,
         develop_dtype: torch.dtype = torch.float32,
+        in_place: bool = False,
         **kwargs,
     ) -> QuantTensor:
         """Quantize a floating point tensor.
@@ -93,6 +94,8 @@ class QuantizerImpl:
                 The default dtype for scale.
             develop_dtype (`torch.dtype`, *optional*, defaults to `torch.float32`):
                 The develop dtype.
+            in_place (`bool`):
+                Whether to quantize the tensor in place.
             **kwargs:
                 Other keyword arguments for the quantization kernel. For example,
                 ``inputs`` for the input tensors in GPTQ kernel,
@@ -121,6 +124,7 @@ class QuantizerImpl:
             return_with_quant=return_with_quant,
             default_dtype=default_dtype or tensor.dtype,
             develop_dtype=develop_dtype,
+            in_place=in_place,
             **kwargs,
         )
         if result.data is not None:
@@ -147,6 +151,7 @@ class QuantizerImpl:
         return_with_quant: bool = False,
         default_dtype: torch.dtype = torch.float16,
         develop_dtype: torch.dtype = torch.float32,
+        in_place: bool = False,
         **kwargs,
     ) -> QuantTensor:
         """Quantize a floating point tensor.
@@ -174,6 +179,8 @@ class QuantizerImpl:
                 The default dtype for scale.
             develop_dtype (`torch.dtype`, *optional*, defaults to `torch.float32`):
                 The develop dtype.
+            in_place (`bool`):
+                Whether to quantize the tensor in place.
             **kwargs:
                 Other keyword arguments for the quantization kernel. For example,
                 ``inputs`` for the input tensors in GPTQ kernel,
@@ -207,7 +214,13 @@ class QuantizerImpl:
         # endregion
         # region compute and quantize the scales and zero point for quantization
         quant_scale = QuantScale()
-        develop_tensor = tensor.to(dtype=develop_dtype) if dtype != develop_dtype else tensor.clone()
+        if in_place:
+            assert dtype == develop_dtype
+            develop_tensor = tensor
+        else:
+            if develop_dtype != torch.bfloat16:
+                raise RuntimeError(f"develop_dtype: {develop_dtype}")
+            develop_tensor = tensor.to(dtype=develop_dtype) if dtype != develop_dtype else tensor.clone()
         for step, (step_info, step_scale, step_dynamic_range) in enumerate(
             zip(self.info.steps, scale, dynamic_range, strict=True)
         ):
@@ -247,8 +260,10 @@ class QuantizerImpl:
             round_delta=round_delta,
             **kwargs,
         )
-        assert not develop_tensor.isnan().any(), "Quantized tensor contains NaN."
-        assert not develop_tensor.isinf().any(), "Quantized tensor contains Inf."
+        # assert not develop_tensor.isnan().any(), "Quantized tensor contains NaN."
+        # assert not develop_tensor.isinf().any(), "Quantized tensor contains Inf."
+        assert not _yes(develop_tensor, torch.isnan), "Quantized tensor contains NaN."
+        assert not _yes(develop_tensor, torch.isinf), "Quantized tensor contains Inf."
         # endregion
         # region update the quantized tensor
         quantized = None
@@ -321,3 +336,14 @@ class QuantizerImpl:
                     config, tensor_shape, default_dtype, quant_range=quant_range, range_bound=range_bound
                 )
         return self.info
+
+
+def _yes(tensor: torch.Tensor, judge_func: tp.Callable):
+    chunk_size = 50_000_000
+    numel = tensor.numel()
+    flat = tensor.flatten()
+    for i in range(0, numel, chunk_size):
+        end = min(i + chunk_size, numel)
+        if judge_func(flat[i:end]).any():
+            return True
+    return False

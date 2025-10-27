@@ -3,6 +3,8 @@
 
 import torch
 
+from deepcompressor.quantizer.kernel.devices import try_all_devices
+
 from ...data.dtype import QuantDataType
 from ...data.range import QuantRange
 from ...data.zero import ZeroPointDomain
@@ -65,6 +67,7 @@ class QuantRtnKernel(BaseQuantKernel):
         )
 
 
+@try_all_devices()
 def rtn_quantize(
     tensor: torch.Tensor,
     *,
@@ -104,7 +107,7 @@ def rtn_quantize(
     round_delta = round_delta.view(view_shape) if round_delta is not None else None
     if zero_domain == ZeroPointDomain.PostScale:
         qtensor = qtensor.add_(zero)
-    qtensor = qtensor.div(scale)
+    qtensor = qtensor.div_(scale)
     if zero_domain == ZeroPointDomain.PreScale:
         qtensor = qtensor.add_(zero)
     qtensor = simple_quantize(

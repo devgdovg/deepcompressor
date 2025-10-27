@@ -1,10 +1,11 @@
 import torch
 
-from .common import convert_to_nunchaku_transformer_block_state_dict, update_state_dict
+from .common import convert_to_nunchaku_transformer_block_state_dict, convert_to_nunchaku_w4x4y16_linear_state_dict, update_state_dict
 
 
-def _get_sdxl_transformer_block_names(state_dict):
+def _get_sdxl_block_names(state_dict):
     transformer_block_names: set[str] = set()
+    conv2d_as_linear_names: set[str] = set()
     other: dict[str, torch.Tensor] = {}
     for param_name in state_dict.keys():
         if ".transformer_blocks." in param_name:
@@ -14,11 +15,19 @@ def _get_sdxl_transformer_block_names(state_dict):
                 transformer_block_names.add(".".join(param_name.split(".")[:5]))
             else:
                 raise ValueError(f"Unknown block name: {param_name}")
+        elif ".resnets." in param_name and ".conv" in param_name and ".linear" in param_name:
+            if param_name.startswith("up_blocks") or param_name.startswith("down_blocks"):
+                conv2d_as_linear_names.add(".".join(param_name.split(".")[:6]))
+            elif param_name.startswith("mid_block"):
+                conv2d_as_linear_names.add(".".join(param_name.split(".")[:5]))
+            else:
+                raise ValueError(f"Unknown block name: {param_name}")
         else:
             other[param_name] = state_dict[param_name]
     # all the numbers in sdxl state dict are single-digit, so there's no need to convert to int for sorting.
     transformer_block_names = sorted(transformer_block_names, key=lambda x: tuple(x.split(".")))
-    return transformer_block_names, other
+    conv2d_as_linear_names = sorted(conv2d_as_linear_names, key=lambda x: tuple(x.split(".")))
+    return transformer_block_names, conv2d_as_linear_names, other
 
 
 def convert_to_nunchaku_sdxl_state_dicts(
@@ -28,10 +37,10 @@ def convert_to_nunchaku_sdxl_state_dicts(
     branch_dict: dict[str, torch.Tensor],
     float_point: bool = False,
 ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
-    block_names, other = _get_sdxl_transformer_block_names(model_dict)
-    print(f"Converting {len(block_names)} transformer blocks...")
+    transformer_block_names, conv2d_as_linear_names, other = _get_sdxl_block_names(model_dict)
+    print(f"Converting {len(transformer_block_names)} transformer blocks...")
     converted: dict[str, torch.Tensor] = {}
-    for block_name in block_names:
+    for block_name in transformer_block_names:
         d = convert_to_nunchaku_transformer_block_state_dict(
             state_dict=model_dict,
             scale_dict=scale_dict,
@@ -78,4 +87,15 @@ def convert_to_nunchaku_sdxl_state_dicts(
             float_point=float_point,
         )
         update_state_dict(converted, d, prefix=block_name,)
+    
+    for _name in conv2d_as_linear_names:
+        conv2d_as_linear_state_dict = convert_to_nunchaku_w4x4y16_linear_state_dict(
+            weight=model_dict[f"{_name}.weight"],
+            scale=scale_dict[f"{_name}.weight.scale.0"],
+            bias=model_dict[f"{_name}.bias"],
+            smooth=smooth_dict[_name],
+            lora=(branch_dict[_name]["a.weight"], branch_dict[_name]["b.weight"]),
+        )
+        update_state_dict(converted, conv2d_as_linear_state_dict, prefix=_name)
+    
     return converted, other

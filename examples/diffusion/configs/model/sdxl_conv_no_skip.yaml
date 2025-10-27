@@ -1,0 +1,71 @@
+cache:
+  root: /data/dongd/deepcompr/runs
+output:
+  root: /data/dongd/deepcompr/runs
+pipeline:
+  name: sdxl
+  dtype: torch.bfloat16
+  device: "cuda:4"
+eval:
+  num_steps: 50
+  guidance_scale: 5.0
+  protocol: EulerDiscrete{num_steps}-g{guidance_scale}
+  batch_size_per_gpu: 2
+  num_gpus: 1
+  num_samples: 100
+  benchmarks:
+    - "/data/dongd/datasets/MJHQ30K.json"
+quant:
+  develop_dtype: torch.bfloat16
+  calib:
+    batch_size: 2
+    combine: false
+    num_samples: 128
+    path: /data/dongd/deepcompr/datasets/{dtype}/{model}/{protocol}/{data}/s128 # s128 is for qdiff calib data samples
+  wgts:
+    skips:
+    - embed
+    - resblock_shortcut
+    - resblock_time_proj
+    - transformer_proj_in
+    - transformer_proj_out
+    - transformer_norm
+    - transformer_add_norm
+    - attn_add
+    - ffn_add
+    - down_sample
+    - up_sample
+    low_rank:
+      skips:
+      - embed
+      - transformer_proj_in
+      - transformer_proj_out
+      - transformer_norm
+      - transformer_add_norm
+      - down_sample
+      - up_sample
+  ipts:
+    skips:
+    - embed
+    - resblock_shortcut
+    - resblock_time_proj
+    - transformer_proj_in
+    - transformer_proj_out
+    - transformer_norm
+    - transformer_add_norm
+    - attn_add
+    - ffn_add
+    - down_sample
+    - up_sample
+  smooth:
+    proj:
+      skips:
+      - embed
+      - resblock_shortcut
+      - resblock_time_proj
+      - transformer_proj_in
+      - transformer_proj_out
+      - transformer_norm
+      - transformer_add_norm
+      - down_sample
+      - up_sample

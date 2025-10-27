@@ -2,6 +2,8 @@
 """Diffusion pipeline configuration module."""
 
 import gc
+import json
+import os
 import typing as tp
 from dataclasses import dataclass, field
 
@@ -11,12 +13,16 @@ from diffusers.pipelines import (
     DiffusionPipeline,
     FluxControlPipeline,
     FluxFillPipeline,
+    FluxPipeline,
     SanaPipeline,
 )
+from diffusers.models.transformers import FluxTransformer2DModel
 from omniconfig import configclass
 from torch import nn
 from transformers import PreTrainedModel, PreTrainedTokenizer, T5EncoderModel
+from safetensors.torch import load_file
 
+from deepcompressor.app.diffusion.pipeline.utils.mapping import comfy_to_diffusers
 from deepcompressor.data.utils.dtype import eval_dtype
 from deepcompressor.quantizer.processor import Quantizer
 from deepcompressor.utils import tools
@@ -28,6 +34,7 @@ from ..nn.patch import (
     replace_fused_linear_with_concat_linear,
     replace_up_block_conv_with_concat_conv,
     shift_input_activations,
+    replace_conv2d_with_equivalent_linear_in_sdxl,
 )
 
 __all__ = ["DiffusionPipelineConfig"]
@@ -357,6 +364,16 @@ class DiffusionPipelineConfig:
                 pipeline.text_encoder.to(dtype)
             else:
                 pipeline = SanaPipeline.from_pretrained(path, torch_dtype=dtype)
+        elif name == "flux.1-dev-custom":
+            with open(os.path.join(path, "config.json"), "r", encoding="utf-8") as f:
+                json_config = json.load(f) 
+            transformer = FluxTransformer2DModel.from_config(json_config).to(dtype)
+            checkpoint_file = os.path.basename(path) + ".safetensors"
+            state_dict = comfy_to_diffusers(load_file(os.path.join(path, checkpoint_file)))
+            transformer.load_state_dict(state_dict)
+            pipeline = FluxPipeline.from_pretrained(
+                "black-forest-labs/FLUX.1-dev", transformer=transformer, torch_dtype=torch.bfloat16
+                )
         else:
             pipeline = AutoPipelineForText2Image.from_pretrained(path, torch_dtype=dtype)
         pipeline = pipeline.to(device)
@@ -365,6 +382,7 @@ class DiffusionPipelineConfig:
         # The quantization and inference for resblock_conv layer is not completed.
         # So here we do not do any pre process to conv layers.
         # replace_up_block_conv_with_concat_conv(model)
+        replace_conv2d_with_equivalent_linear_in_sdxl(pipeline)
         if shift_activations:
             shift_input_activations(model)
         return pipeline

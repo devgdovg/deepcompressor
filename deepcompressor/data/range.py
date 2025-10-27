@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import torch
 
+from deepcompressor.data.utils.range import absmax
+
 from .dtype import QuantDataType
 from .zero import ZeroPointDomain
 
@@ -310,9 +312,11 @@ class DynamicRange:
             # region step 1: determine the value range (i.e., vmax and vmin)
             if zero_domain is None:
                 vmin = None
-                vmax = tensors[0].abs().amax(dim=reduced, keepdim=True)
+                vmax = absmax(tensors[0], reduced)
+                # vmax = tensors[0].abs().amax(dim=reduced, keepdim=True)
                 for tensor in tensors[1:]:
-                    vmax = torch.maximum(vmax, tensor.abs().amax(dim=reduced, keepdim=True).to(vmax.device))
+                    # vmax = torch.maximum(vmax, tensor.abs().amax(dim=reduced, keepdim=True).to(vmax.device))
+                    vmax = torch.maximum(vmax, absmax(tensor, reduced).to(vmax.device))
             else:
                 vmax = tensors[0].amax(dim=reduced, keepdim=True)
                 for tensor in tensors[1:]:

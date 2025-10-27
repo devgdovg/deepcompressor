@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import torch
 from omniconfig import configclass
 
+from deepcompressor.quantizer.kernel.devices import try_all_devices
+
 from ...data.cache import TensorCache
 from ...data.dtype import QuantDataType
 from ...data.range import QuantRange, RangeBound
@@ -126,6 +128,7 @@ class QuantGptqKernel(BaseQuantKernel):
 
 
 @torch.no_grad()
+@try_all_devices(forced_dtype=torch.float32)
 def gptq_quantize(  # noqa: C901
     tensor: torch.Tensor,
     *,
@@ -214,18 +217,19 @@ def gptq_quantize(  # noqa: C901
     # endregion
     # region step 5: get the inverse of the Hessian matrix
     stable_inv, num_inv_tries = False, 0
+    logger = tools.logging.getLogger(f"{__name__}.GPTQ")
     while (not stable_inv) and num_inv_tries < gptq_config.num_inv_tries:
         num_inv_tries += 1
         try:
             hessian_inv = torch.linalg.cholesky(hessian)
             hessian_inv = torch.cholesky_inverse(hessian_inv)
             hessian_inv = torch.linalg.cholesky(hessian_inv, upper=True)
-        except RuntimeError:
+        except RuntimeError as err:
+            logger.info(f"        - Hessian RuntimeError: {str(err)}")
             hessian_diag += (gptq_config.damp_percentage * 0.1) * hessian_diag_mean
             continue
         stable_inv = True
     if num_inv_tries > 1:
-        logger = tools.logging.getLogger(f"{__name__}.GPTQ")
         logger.debug("        - Hessian is not stable %s %d tries.", "until" if stable_inv else "after", num_inv_tries)
     assert not hessian_inv.isinf().any(), "Inverse of Hessian matrix contains Inf."
     assert not hessian_inv.isnan().any(), "Inverse of Hessian matrix contains NaN."

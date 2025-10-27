@@ -10,8 +10,10 @@ from tqdm import tqdm
 
 from deepcompressor.data.cache import IOTensorsCache
 from deepcompressor.data.zero import ZeroPointDomain
+from deepcompressor.nn.patch.conv import Conv2dAsLinear
 from deepcompressor.nn.patch.lowrank import LowRankBranch
 from deepcompressor.utils import tools
+from deepcompressor.utils.common import join_name
 
 from ..nn.struct import DiffusionAttentionStruct, DiffusionBlockStruct, DiffusionModelStruct, DiffusionModuleStruct
 from .config import DiffusionQuantConfig
@@ -46,6 +48,8 @@ def calibrate_diffusion_block_low_rank_branch(  # noqa: C901
     assert config.wgts.low_rank is not None
     logger = tools.logging.getLogger(f"{__name__}.WeightQuantSVD")
     logger.debug("- Calibrating low-rank branches of block %s", layer.name)
+    if layer.name == "up_blocks.2":
+        torch.cuda.memory._record_memory_history()
     layer_cache = layer_cache or {}
     layer_kwargs = layer_kwargs or {}
     for module_key, module_name, module, parent, field_name in layer.named_key_modules():
@@ -89,6 +93,8 @@ def calibrate_diffusion_block_low_rank_branch(  # noqa: C901
         if isinstance(modules[0], nn.Linear):
             assert all(isinstance(m, nn.Linear) for m in modules)
             channels_dim = -1
+        elif isinstance(module, Conv2dAsLinear):
+            channels_dim = -1
         else:
             assert all(isinstance(m, nn.Conv2d) for m in modules)
             channels_dim = 1
@@ -96,9 +102,20 @@ def calibrate_diffusion_block_low_rank_branch(  # noqa: C901
         if config.enabled_extra_wgts and config.extra_wgts.is_enabled_for(module_key):
             config_wgts = config.extra_wgts
         quantizer = DiffusionWeightQuantizer(config_wgts, develop_dtype=config.develop_dtype, key=module_key)
+        if isinstance(module, Conv2dAsLinear):
+            logger.info(f"[low_rank_branch]Conv2dAsLinear module_name: {module_name}, module_key: {module_key}, quantizer.is_enabled: {quantizer.is_enabled()}, quantizer.is_enabled_low_rank: {quantizer.is_enabled_low_rank()}")
         if quantizer.is_enabled() and quantizer.is_enabled_low_rank():
             if isinstance(module, nn.Conv2d):
                 assert module.weight.shape[2:].numel()
+            elif isinstance(module, Conv2dAsLinear):
+                assert len(module_names) == 1
+                assert len(modules) == 1
+                module_name = join_name(module_name, "linear")
+                eval_name = module_name
+                module_names = [module_name]
+                eval_module = modules[0].linear
+                modules = [modules[0].linear]
+                module = module.linear
             else:
                 assert isinstance(module, nn.Linear)
             if module_name not in branch_state_dict:
@@ -106,7 +123,7 @@ def calibrate_diffusion_block_low_rank_branch(  # noqa: C901
                 tools.logging.Formatter.indent_inc()
                 branch_state_dict[module_name] = quantizer.calibrate_low_rank(
                     input_quantizer=DiffusionActivationQuantizer(
-                        config.ipts, key=module_key, channels_dim=channels_dim
+                        config.ipts, key=module_key, channels_dim=channels_dim, develop_dtype=config.develop_dtype
                     ),
                     modules=modules,
                     inputs=layer_cache[module_name].inputs if layer_cache else None,
@@ -140,11 +157,16 @@ def calibrate_diffusion_block_low_rank_branch(  # noqa: C901
                     module.weight.data.sub_(branch.get_effective_weight().view(module.weight.data.shape))
                     branch.as_hook().register(module)
             else:
+                # if isinstance(module, Conv2dAsLinear):
+                #     module = module.linear
                 module.weight.data.sub_(shared_branch.get_effective_weight().view(module.weight.data.shape))
                 shared_branch.as_hook().register(module)
             del shared_branch
             gc.collect()
             torch.cuda.empty_cache()
+            if layer.name == "up_blocks.2":
+                torch.cuda.memory._dump_snapshot("/data/dongd/low_rank_calib_upblocks.2_snapshot.pickle")
+                torch.cuda.memory._record_memory_history(enabled=None)
 
 
 @torch.inference_mode()
@@ -191,6 +213,10 @@ def update_diffusion_block_weight_quantizer_state_dict(
         if config.enabled_extra_wgts and config.extra_wgts.is_enabled_for(module_key):
             config_wgts = config.extra_wgts
         quantizer = DiffusionWeightQuantizer(config_wgts, develop_dtype=config.develop_dtype, key=module_key)
+        if isinstance(module, Conv2dAsLinear):
+            logger.info(f"[update_quantizer]Conv2dAsLinear module_name: {module_name}, module_key: {module_key}, quantizer.is_enabled: {quantizer.is_enabled()}")
+            module_name = join_name(module_name, "linear")
+            module = module.linear
         if quantizer.is_enabled():
             if module_name not in quantizer_state_dict:
                 logger.debug("- Calibrating %s.weight quantizer", module_name)
@@ -247,6 +273,10 @@ def quantize_diffusion_block_weights(
 
     tools.logging.Formatter.indent_inc()
     for module_key, module_name, module, _, _ in layer.named_key_modules():
+        if isinstance(module, Conv2dAsLinear):
+            logger.info(f"[quantize_weight]Conv2dAsLinear module_name: {module_name}, module_key: {module_key}")
+            module_name = join_name(module_name, "linear")
+            module = module.linear
         if module_name in quantizer_state_dict:
             param_name = f"{module_name}.weight"
             logger.debug("- Quantizing %s", param_name)
@@ -257,6 +287,7 @@ def quantize_diffusion_block_weights(
             logger.debug("  + group_shape: %s", str(config_wgts.group_shapes))
             logger.debug("  + scale_dtype: %s", str(config_wgts.scale_dtypes))
             quantizer = DiffusionWeightQuantizer(config_wgts, develop_dtype=config.develop_dtype, key=module_key)
+            logger.info(f"[quantize_weight] quantizer.is_enabled: {quantizer.is_enabled()}")
             quantizer.load_state_dict(quantizer_state_dict[module_name], device=module.weight.device)
             result = quantizer.quantize(
                 module.weight.data,

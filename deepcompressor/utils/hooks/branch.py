@@ -23,7 +23,7 @@ class AccumBranchHook(IOHook):
     ):
         super().__init__(pre=True, post=True, input_packager=input_packager, output_packager=output_packager)
         self.branch = branch
-        self.tensor = None
+        # self.tensor = None
 
     def pre_forward(
         self, module: nn.Module, input_args: tuple[torch.Tensor, ...], input_kwargs: dict[str, tp.Any]
@@ -37,7 +37,11 @@ class AccumBranchHook(IOHook):
         """
         tensors = self.input_packager.unpack(module, input_args, input_kwargs)
         assert len(tensors) == 1, "BranchHook only supports single input tensor"
-        self.tensor = next(iter(tensors.values()))
+        # self.tensor = next(iter(tensors.values()))
+        _input_tensor = next(iter(tensors.values()))
+        # self.branch_output = self.branch(self.tensor)
+        if self.branch is not None:
+            self.branch_output = self.branch(_input_tensor)
         return None
 
     def post_forward(
@@ -59,6 +63,7 @@ class AccumBranchHook(IOHook):
         assert len(output_tensors) == 1, "LoRAHook only supports single output tensor"
         output_key, output_tensor = next(iter(output_tensors.items()))
         if self.branch is not None:
-            output_tensor = output_tensor + self.branch(self.tensor)
-        self.tensor = None
+            # output_tensor = output_tensor + self.branch(self.tensor)
+            output_tensor = output_tensor + self.branch_output
+        # self.tensor = None
         return self.output_packager.repack({output_key: output_tensor}, module, input_args, input_kwargs, output)
