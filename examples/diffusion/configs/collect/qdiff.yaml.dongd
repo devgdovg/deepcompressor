@@ -1,0 +1,5 @@
+collect:
+  root: /data/dongd/deepcompr/datasets
+  dataset_name: qdiff
+  data_path: examples/diffusion/prompts/qdiff.yaml
+  num_samples: 128

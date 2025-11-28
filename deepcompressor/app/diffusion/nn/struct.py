@@ -58,7 +58,7 @@ from diffusers.pipelines import (
     StableDiffusionXLPipeline,
 )
 
-from deepcompressor.nn.patch.conv import ConcatConv2d, ShiftedConv2d
+from deepcompressor.nn.patch.conv import ConcatConv2d, ShiftedConv2d, Conv2dAsLinear
 from deepcompressor.nn.patch.linear import ConcatLinear, ShiftedLinear
 from deepcompressor.nn.struct.attn import (
     AttentionConfigStruct,
@@ -70,6 +70,7 @@ from deepcompressor.nn.struct.attn import (
 )
 from deepcompressor.nn.struct.base import BaseModuleStruct
 from deepcompressor.utils.common import join_name
+from deepcompressor.utils import tools
 
 from .attention import DiffusionAttentionProcessor
 
@@ -966,6 +967,7 @@ class DiffusionResnetStruct(BaseModuleStruct):
         idx: int = 0,
         **kwargs,
     ) -> "DiffusionResnetStruct":
+        logger = tools.logging.getLogger(__name__)
         if isinstance(module, ResnetBlock2D):
             assert module.upsample is None, "upsample must be None"
             assert module.downsample is None, "downsample must be None"
@@ -986,6 +988,9 @@ class DiffusionResnetStruct(BaseModuleStruct):
                 shifted = True
                 conv1_convs = [module.conv1.conv]
                 conv1_names = ["conv1.conv"]
+            elif isinstance(module.conv1, Conv2dAsLinear):
+                conv1_convs, conv1_names = [module.conv1], ["conv1"]
+                logger.info(f"construct conv1 Conv2dAsLinear in DiffusionResnetStruct, fname={fname}, rname={rname}, rkey={rkey}, idx={idx}")
             else:
                 assert isinstance(module.conv1, nn.Conv2d)
                 conv1_convs, conv1_names = [module.conv1], ["conv1"]
@@ -1004,8 +1009,11 @@ class DiffusionResnetStruct(BaseModuleStruct):
                 shifted = True
                 conv2_convs = [module.conv2.conv]
                 conv2_names = ["conv2.conv"]
+            elif isinstance(module.conv2, Conv2dAsLinear):
+                conv2_convs, conv2_names = [module.conv2], ["conv2"]
+                logger.info(f"construct conv2 Conv2dAsLinear in DiffusionResnetStruct, fname={fname}, rname={rname}, rkey={rkey}, idx={idx}")
             else:
-                assert isinstance(module.conv2, nn.Conv2d)
+                assert isinstance(module.conv2, (nn.Conv2d, Conv2dAsLinear))
                 conv2_convs, conv2_names = [module.conv2], ["conv2"]
             convs, conv_rnames = [conv1_convs, conv2_convs], [conv1_names, conv2_names]
             norms, norm_rnames = [module.norm1, module.norm2], ["norm1", "norm2"]
@@ -1017,8 +1025,8 @@ class DiffusionResnetStruct(BaseModuleStruct):
         else:
             raise NotImplementedError(f"Unsupported module type: {type(module)}")
         config = FeedForwardConfigStruct(
-            hidden_size=convs[0][0].weight.shape[1],
-            intermediate_size=convs[0][0].weight.shape[0],
+            hidden_size=convs[0][0].linear.weight.shape[1], # TODO verify
+            intermediate_size=convs[0][0].linear.weight.shape[0], # TODO verify
             intermediate_act_type=act_type,
             num_experts=1,
         )
@@ -1518,6 +1526,7 @@ class UNetStruct(DiffusionModelStruct):
     @classmethod
     def _get_default_key_map(cls) -> dict[str, set[str]]:
         """Get the default allowed keys."""
+        logger = tools.logging.getLogger(__name__)
         key_map: dict[str, set[str]] = defaultdict(set)
         for idx, (block_key, block_cls) in enumerate(
             (
@@ -1561,7 +1570,9 @@ class UNetStruct(DiffusionModelStruct):
             if key in key_map:
                 key_map[key].clear()
             key_map[key].add(key)
-        return {k: v for k, v in key_map.items() if v}
+        ret = {k: v for k, v in key_map.items() if v}
+        logger.info(f">> key_map: {ret}")
+        return ret
 
 
 @dataclass(kw_only=True)

@@ -64,6 +64,8 @@ class ActivationSmoother(BaseTensorProcessor):
             `torch.Tensor`:
                 The smoothed tensor.
         """
+        # logger = tools.logging.getLogger(__name__)
+        # logger.info(f"- [ActivationSmoother] tensor.dtype={tensor.dtype}, develop_dtype={self.develop_dtype}, smooth_scale_dtype={self.smooth_scale.dtype}")
         device, dtype = tensor.device, tensor.dtype
         if self.develop_dtype is None:
             self.develop_dtype = dtype
@@ -511,7 +513,7 @@ class SmoothCalibrator(SearchBasedCalibrator[SmoothCalibConfig, torch.Tensor]):
         x = x.to(dtype=self.develop_dtype) if dtype != self.develop_dtype else x.clone()
         x = x.div_(scale)
         x = self.x_quantizer.quantize(
-            x, channels_dim=channels_dim, default_dtype=dtype, develop_dtype=self.develop_dtype
+            x, channels_dim=channels_dim, default_dtype=dtype, develop_dtype=self.develop_dtype, in_place=True
         ).data
         x = x.mul_(scale).to(dtype=dtype)
         return x.view(shape)

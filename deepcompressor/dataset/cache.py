@@ -15,10 +15,12 @@ import torch.utils.data
 import torch.utils.hooks
 from tqdm import tqdm
 
+from deepcompressor.nn.patch.conv import Conv2dAsLinear
+
 from ..data.cache import IOTensorsCache, ModuleForwardInput, TensorCache
 from ..data.utils.reshape import ConvInputReshapeFn, ConvOutputReshapedFn, LinearReshapeFn
 from ..utils import tools
-from ..utils.common import tree_copy_with_ref, tree_map
+from ..utils.common import join_name, tree_copy_with_ref, tree_map
 from ..utils.hooks import EarlyStopException, EarlyStopHook, Hook
 from .action import CacheAction
 
@@ -260,19 +262,35 @@ class BaseCalibCacheLoader(ABC):
                 needs_inputs = needs_inputs_fn(module_name, module)
                 needs_outputs = needs_outputs_fn(module_name, module)
                 if needs_inputs or needs_outputs:
-                    module_names[layer_name].append(module_name)
-                    cache.setdefault(layer_name, {})[module_name] = self._init_cache(module_name, module)
-                    hook_args.setdefault(layer_name, []).append((module_name, module, needs_inputs, needs_outputs))
-                    info_hooks.extend(
-                        action.register(
-                            name=module_name,
-                            module=module,
-                            cache=cache[layer_name][module_name],
-                            info_mode=True,
-                            needs_inputs=needs_inputs,
-                            needs_outputs=needs_outputs,
+                    if isinstance(module, Conv2dAsLinear):
+                        linear = join_name(module_name, "linear")
+                        module_names[layer_name].append(linear)
+                        cache.setdefault(layer_name, {})[linear] = self._init_cache(linear, module.linear)
+                        hook_args.setdefault(layer_name, []).append((linear, module.linear, needs_inputs, needs_outputs))
+                        info_hooks.extend(
+                            action.register(
+                                name=linear,
+                                module=module.linear,
+                                cache=cache[layer_name][linear],
+                                info_mode=True,
+                                needs_inputs=needs_inputs,
+                                needs_outputs=needs_outputs,
+                            )
                         )
-                    )
+                    else:
+                        module_names[layer_name].append(module_name)
+                        cache.setdefault(layer_name, {})[module_name] = self._init_cache(module_name, module)
+                        hook_args.setdefault(layer_name, []).append((module_name, module, needs_inputs, needs_outputs))
+                        info_hooks.extend(
+                            action.register(
+                                name=module_name,
+                                module=module,
+                                cache=cache[layer_name][module_name],
+                                info_mode=True,
+                                needs_inputs=needs_inputs,
+                                needs_outputs=needs_outputs,
+                            )
+                        )
         if len(cache) == 0:
             return
         if layers is not None:
@@ -311,7 +329,7 @@ class BaseCalibCacheLoader(ABC):
             if early_stop_module is not None:
                 forward_hooks.append(early_stop_module.register_forward_hook(EarlyStopHook()))
             with torch.inference_mode():
-                device = "cuda" if torch.cuda.is_available() else "cpu"
+                device = next(model.parameters()).device if torch.cuda.is_available() else "cpu"
                 tbar = tqdm(
                     desc="collecting acts info",
                     leave=False,

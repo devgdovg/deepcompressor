@@ -1,0 +1,70 @@
+cache:
+  root: /data/dongd/deepcompr/runs
+output:
+  root: /data/dongd/deepcompr/runs
+pipeline:
+  name: flux.1-dev-custom
+  device: "cuda:4"
+  dtype: torch.bfloat16
+  path: /data/dongd/deepcompr/original-model/flux/f0a56ab51074043f7fb95e86f5246031e2424ea1a54b64a8948f6e612fb52fd6
+eval:
+  num_steps: 50
+  guidance_scale: 3.5
+  protocol: fmeuler{num_steps}-g{guidance_scale}
+  batch_size_per_gpu: 2
+  num_gpus: 1
+  num_samples: 100
+  benchmarks:
+    - "/data/dongd/datasets/MJHQ30K.json"
+quant:
+  calib:
+    batch_size: 16
+    path: /data/dongd/deepcompr/datasets/{dtype}/{model}/{protocol}/{data}/s128 # s128 is for qdiff calib data samples
+  wgts:
+    calib_range:
+      element_batch_size: 64
+      sample_batch_size: 16
+      element_size: 512
+      sample_size: -1
+    low_rank:
+      sample_batch_size: 16
+      sample_size: -1
+    skips: 
+    - embed
+    - resblock_shortcut
+    - resblock_time_proj
+    - transformer_proj_in
+    - transformer_proj_out
+    - down_sample
+    - up_sample
+  ipts:
+    calib_range:
+      element_batch_size: 64
+      sample_batch_size: 16
+      element_size: 512
+      sample_size: -1
+    skips: 
+    - embed
+    - resblock_shortcut
+    - resblock_time_proj
+    - transformer_proj_in
+    - transformer_proj_out
+    - transformer_norm
+    - transformer_add_norm
+    - down_sample
+    - up_sample
+  opts:
+    calib_range:
+      element_batch_size: 64
+      sample_batch_size: 16
+      element_size: 512
+      sample_size: -1
+  smooth:
+    proj:
+      element_batch_size: -1
+      sample_batch_size: 16
+      element_size: -1
+      sample_size: -1
+    attn:
+      sample_batch_size: 16
+      sample_size: -1

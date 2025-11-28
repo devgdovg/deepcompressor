@@ -2,18 +2,22 @@ import torch.nn as nn
 from diffusers.models.attention_processor import Attention
 from diffusers.models.transformers.transformer_flux import FluxSingleTransformerBlock
 
-from deepcompressor.nn.patch.conv import ConcatConv2d, ShiftedConv2d
+from deepcompressor.nn.patch.conv import ConcatConv2d, ShiftedConv2d, Conv2dAsLinear
 from deepcompressor.nn.patch.linear import ConcatLinear, ShiftedLinear
 from deepcompressor.utils import patch, tools
 
 from .attention import DiffusionAttentionProcessor
 from .struct import DiffusionFeedForwardStruct, DiffusionModelStruct, DiffusionResnetStruct, UNetStruct
+from diffusers.pipelines import StableDiffusionXLPipeline
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
+from diffusers.models.resnet import ResnetBlock2D
 
 __all__ = [
     "replace_up_block_conv_with_concat_conv",
     "replace_fused_linear_with_concat_linear",
     "replace_attn_processor",
     "shift_input_activations",
+    "replace_conv2d_with_equivalent_linear_in_sdxl",
 ]
 
 
@@ -51,6 +55,64 @@ def replace_up_block_conv_with_concat_conv(model: nn.Module) -> None:
                 setattr(parent_module, child_name, concat_conv)
             tools.logging.Formatter.indent_dec()
         tools.logging.Formatter.indent_dec()
+    tools.logging.Formatter.indent_dec()
+    
+    
+def replace_conv2d_with_equivalent_linear_in_sdxl(pipeline: StableDiffusionXLPipeline) -> None:
+    """Replace Conv2d layers in SDXL UNet2DConditionModel with equivalent linear."""
+    if not isinstance(pipeline, StableDiffusionXLPipeline):
+        return
+    logger = tools.logging.getLogger(__name__)
+    logger.info("Replacing Conv2d with equivalent linear.")
+    tools.logging.Formatter.indent_inc()
+    assert isinstance(pipeline.unet, UNet2DConditionModel)
+    model: UNet2DConditionModel = pipeline.unet
+    # logger.info("replacing conv_in")
+    # model.conv_in = Conv2dAsLinear(model.conv_in)
+    logger.info("+ replacing down_blocks")
+    
+    tools.logging.Formatter.indent_inc()
+    for i, down_block in enumerate(model.down_blocks):
+        assert hasattr(down_block, "resnets")
+        assert isinstance(getattr(down_block, "resnets"), nn.ModuleList)
+        for j, resnet in enumerate(getattr(down_block, "resnets")):
+            assert isinstance(resnet, ResnetBlock2D)
+            logger.info(f"- replacing down_blocks.{i}.resnets.{j}.conv1")
+            resnet.conv1 = Conv2dAsLinear(resnet.conv1)
+            logger.info(f"- replacing down_blocks.{i}.resnets.{j}.conv2")
+            resnet.conv2 = Conv2dAsLinear(resnet.conv2)
+            # logger.info(f"- replacing down_blocks.{i}.resnets.{j}.conv_shortcut")
+            # resnet.conv_shortcut = _convert(resnet.conv_shortcut)
+    tools.logging.Formatter.indent_dec()
+    
+    logger.info("+ replacing mid_block")
+    assert hasattr(model.mid_block, "resnets")
+    assert isinstance(getattr(model.mid_block, "resnets"), nn.ModuleList)
+    tools.logging.Formatter.indent_inc()
+    for j, resnet in enumerate(getattr(model.mid_block, "resnets")):
+        assert isinstance(resnet, ResnetBlock2D)
+        logger.info(f"- replacing mid_block.resnets.{j}.conv1")
+        resnet.conv1 = Conv2dAsLinear(resnet.conv1)
+        logger.info(f"- replacing mid_block.resnets.{j}.conv2")
+        resnet.conv2 = Conv2dAsLinear(resnet.conv2)
+    tools.logging.Formatter.indent_dec()
+    
+    logger.info("+ replacing up_blocks")
+    tools.logging.Formatter.indent_inc()
+    for i, up_block in enumerate(model.up_blocks):
+        assert hasattr(up_block, "resnets")
+        assert isinstance(getattr(up_block, "resnets"), nn.ModuleList)
+        for j, resnet in enumerate(getattr(up_block, "resnets")):
+            assert isinstance(resnet, ResnetBlock2D)
+            logger.info(f"- replacing up_blocks.{i}.resnets.{j}.conv1")
+            resnet.conv1 = Conv2dAsLinear(resnet.conv1)
+            logger.info(f"- replacing up_blocks.{i}.resnets.{j}.conv2")
+            resnet.conv2 = Conv2dAsLinear(resnet.conv2)
+            # logger.info(f"- replacing up_blocks.{i}.resnets.{j}.conv_shortcut")
+            # resnet.conv_shortcut = _convert(resnet.conv_shortcut)
+    tools.logging.Formatter.indent_dec()
+    # logger.info("replacing conv_out")
+    # model.conv_out = Conv2dAsLinear(model.conv_out)
     tools.logging.Formatter.indent_dec()
 
 
