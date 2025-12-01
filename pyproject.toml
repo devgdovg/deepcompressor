@@ -44,7 +44,7 @@ bs4 = ">= 0.0.2"
 ftfy = ">= 6.2.0"
 cd-fvd = ">= 0.1.1"
 xformers = ">= 0.0.26"
-pyav = ">= 13.0.0"
+av = ">= 13.0.0"
 clip = ">= 0.2.0"
 image_reward = { git = "https://github.com/THUDM/ImageReward.git", branch = "main" }
 

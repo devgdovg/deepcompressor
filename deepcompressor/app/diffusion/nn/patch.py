@@ -1,8 +1,10 @@
 import torch.nn as nn
 from diffusers.models.attention_processor import Attention
 from diffusers.models.transformers.transformer_flux import FluxSingleTransformerBlock
+from diffusers.models.transformers.transformer_z_image import ZImageTransformer2DModel, ZImageTransformerBlock
 
 from deepcompressor.nn.patch.conv import ConcatConv2d, ShiftedConv2d
+from deepcompressor.nn.patch.ff import convert_z_image_ff
 from deepcompressor.nn.patch.linear import ConcatLinear, ShiftedLinear
 from deepcompressor.utils import patch, tools
 
@@ -116,3 +118,11 @@ def replace_attn_processor(model: nn.Module) -> None:
             logger.info(f"+ Replacing {name} processor with DiffusionAttentionProcessor.")
             module.set_processor(DiffusionAttentionProcessor(module.processor))
     tools.logging.Formatter.indent_dec()
+
+
+def replace_zimage_feedforward(z_image_model: ZImageTransformer2DModel) -> None:
+    """Replace custom FeedForward module in `ZImageTransformerBlock`s with standard FeedForward in diffusers lib."""
+    for _, module in z_image_model.named_modules():
+        if isinstance(module, ZImageTransformerBlock):
+            orig_ff = module.feed_forward
+            module.feed_forward = convert_z_image_ff(orig_ff)

@@ -10,6 +10,7 @@ from diffusers.models.transformers import (
     FluxTransformer2DModel,
     PixArtTransformer2DModel,
     SanaTransformer2DModel,
+    ZImageTransformer2DModel,
 )
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
 
@@ -58,6 +59,9 @@ class CollectHook:
             new_args.append(input_kwargs.pop("hidden_states"))
         elif isinstance(module, FluxTransformer2DModel):
             new_args.append(input_kwargs.pop("hidden_states"))
+        elif isinstance(module, ZImageTransformer2DModel):
+            new_args.append(input_kwargs.pop("x"))
+            # TODO verify with data loader
         else:
             raise ValueError(f"Unknown model: {module}")
         cache = tree_map(lambda x: x.cpu(), {"input_args": new_args, "input_kwargs": input_kwargs, "outputs": output})

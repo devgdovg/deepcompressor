@@ -1,0 +1,1 @@
+TORCH_CUDA_ARCH_LIST="8.9" python3 -c "import runpy; runpy.run_path('deepcompressor/app/diffusion/nn/struct.py', run_name='__main__')"

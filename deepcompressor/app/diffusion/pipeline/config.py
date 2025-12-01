@@ -6,12 +6,14 @@ import typing as tp
 from dataclasses import dataclass, field
 
 import torch
+from diffusers.models.transformers.transformer_z_image import ZImageTransformer2DModel
 from diffusers.pipelines import (
     AutoPipelineForText2Image,
     DiffusionPipeline,
     FluxControlPipeline,
     FluxFillPipeline,
     SanaPipeline,
+    ZImagePipeline,
 )
 from omniconfig import configclass
 from torch import nn
@@ -25,9 +27,10 @@ from deepcompressor.utils.hooks import AccumBranchHook, ProcessHook
 from ....nn.patch.linear import ConcatLinear, ShiftedLinear
 from ....nn.patch.lowrank import LowRankBranch
 from ..nn.patch import (
-    replace_fused_linear_with_concat_linear,
-    replace_up_block_conv_with_concat_conv,
-    shift_input_activations,
+    # replace_fused_linear_with_concat_linear,
+    # replace_up_block_conv_with_concat_conv,
+    replace_zimage_feedforward,
+    # shift_input_activations,
 )
 
 __all__ = ["DiffusionPipelineConfig"]
@@ -344,6 +347,8 @@ class DiffusionPipelineConfig:
                 path = "black-forest-labs/FLUX.1-Fill-dev"
             elif name == "flux.1-schnell":
                 path = "black-forest-labs/FLUX.1-schnell"
+            elif name == "z-image-turbo":
+                path = "Tongyi-MAI/Z-Image-Turbo"
             else:
                 raise ValueError(f"Path for {name} is not specified.")
         if name in ["flux.1-canny-dev", "flux.1-depth-dev"]:
@@ -357,14 +362,18 @@ class DiffusionPipelineConfig:
                 pipeline.text_encoder.to(dtype)
             else:
                 pipeline = SanaPipeline.from_pretrained(path, torch_dtype=dtype)
+        elif name == "z-image-turbo":
+            pipeline = ZImagePipeline.from_pretrained(path, torch_dtype=dtype, low_cpu_mem_usage=False)
         else:
             pipeline = AutoPipelineForText2Image.from_pretrained(path, torch_dtype=dtype)
         pipeline = pipeline.to(device)
         model = pipeline.unet if hasattr(pipeline, "unet") else pipeline.transformer
-        replace_fused_linear_with_concat_linear(model)
-        replace_up_block_conv_with_concat_conv(model)
-        if shift_activations:
-            shift_input_activations(model)
+        # replace_fused_linear_with_concat_linear(model)
+        # replace_up_block_conv_with_concat_conv(model)
+        if isinstance(model, ZImageTransformer2DModel):
+            replace_zimage_feedforward(model)
+        # if shift_activations:
+        #     shift_input_activations(model)
         return pipeline
 
     @staticmethod

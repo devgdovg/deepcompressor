@@ -1,0 +1,4 @@
+TORCH_CUDA_ARCH_LIST="8.9" python3 -m deepcompressor.app.diffusion.dataset.collect.calib \
+    examples/diffusion/configs/model/z-image-turbo.yaml examples/diffusion/configs/collect/qdiff.yaml
+
+# nohup z_image_scripts/z_image_turbo_calib.sh > z_image_scripts/z_image_turbo_calib_20251201_1232.log 2>&1 &
