@@ -22,4 +22,4 @@ quant:
     - null
     allow_unsigned: true
 pipeline:
-  shift_activations: true
+  shift_activations: false

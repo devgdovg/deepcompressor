@@ -7,13 +7,13 @@ from dataclasses import dataclass, field
 
 import torch
 from diffusers.models.transformers.transformer_z_image import ZImageTransformer2DModel
+from diffusers.pipelines.z_image.pipeline_z_image import ZImagePipeline
 from diffusers.pipelines import (
     AutoPipelineForText2Image,
     DiffusionPipeline,
     FluxControlPipeline,
     FluxFillPipeline,
     SanaPipeline,
-    ZImagePipeline,
 )
 from omniconfig import configclass
 from torch import nn

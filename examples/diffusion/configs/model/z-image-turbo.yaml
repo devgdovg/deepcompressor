@@ -10,7 +10,7 @@ eval:
 quant:
   calib:
     batch_size: 1
-    path: /data/dongd/dc_calib/datasets/{dtype}/{model}/{protocol}/{data}/s128
+    path: datasets/{dtype}/{model}/{protocol}/{data}/s128
     num_samples: 128
     num_workers: 1
   wgts:
@@ -22,11 +22,16 @@ quant:
     low_rank:
       sample_batch_size: 16
       sample_size: -1
-    skips: 
-    - transformer_norm
-    - transformer_add_norm
-    - attn_add
-    - ffn_add
+      skips:
+      - transformer_norm
+      - transformer_add_norm
+      - attn_add
+      - ffn_add
+    # skips:
+    # - transformer_norm
+    # - transformer_add_norm
+    # - attn_add
+    # - ffn_add
   ipts:
     calib_range:
       element_batch_size: 64

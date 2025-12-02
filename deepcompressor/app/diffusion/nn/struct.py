@@ -52,6 +52,7 @@ from diffusers.models.unets.unet_2d_blocks import (
     UpBlock2D,
 )
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
+from diffusers.pipelines.z_image.pipeline_z_image import ZImagePipeline
 from diffusers.pipelines import (
     FluxControlPipeline,
     FluxFillPipeline,
@@ -62,7 +63,6 @@ from diffusers.pipelines import (
     StableDiffusion3Pipeline,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
-    ZImagePipeline,
 )
 
 from deepcompressor.nn.patch.conv import ConcatConv2d, ShiftedConv2d
@@ -108,6 +108,7 @@ DIT_CLS = tp.Union[
     SD3Transformer2DModel,
     FluxTransformer2DModel,
     SanaTransformer2DModel,
+    ZImageTransformer2DModel,
 ]
 UNET_CLS = tp.Union[UNet2DModel, UNet2DConditionModel]
 MODEL_CLS = tp.Union[DIT_CLS, UNET_CLS]
@@ -120,6 +121,7 @@ DIT_PIPELINE_CLS = tp.Union[
     FluxControlPipeline,
     FluxFillPipeline,
     SanaPipeline,
+    ZImagePipeline,
 ]
 PIPELINE_CLS = tp.Union[UNET_PIPELINE_CLS, DIT_PIPELINE_CLS]
 
@@ -717,7 +719,7 @@ class DiffusionTransformerBlockStruct(TransformerBlockStruct, DiffusionBlockStru
             pre_add_ffn_norm, pre_add_ffn_norm_rname = module.norm2_context, "norm2_context"
             add_ffn, add_ffn_rname = module.ff_context, "ff_context"
         elif isinstance(module, ZImageTransformerBlock):
-            parallel = True # TODO
+            parallel = False
             norm_type, add_norm_type = "rms_norm", None
             pre_attn_norms, pre_attn_norm_rnames = [module.attention_norm1], ["attention_norm1"]
             attns, attn_rnames = [module.attention], ["attention"]
@@ -1716,6 +1718,8 @@ class DiTStruct(DiffusionModelStruct, DiffusionTransformerStruct):
             module = module.transformer
         if isinstance(module, FluxTransformer2DModel):
             return FluxStruct.construct(module, parent=parent, fname=fname, rname=rname, rkey=rkey, idx=idx, **kwargs)
+        elif isinstance(module, ZImageTransformer2DModel):
+            return ZImageStruct.construct(module, parent=parent, fname=fname, rname=rname, rkey=rkey, idx=idx, **kwargs)
         else:
             if isinstance(module, PixArtTransformer2DModel):
                 input_embed, input_embed_rname = module.pos_embed, "pos_embed"
@@ -1964,9 +1968,7 @@ class FluxStruct(DiTStruct):
                 key_map[key].clear()
             key_map[key].add(key)
         return {k: v for k, v in key_map.items() if v}
-    
 
-##############################################
 
 @dataclass(kw_only=True)
 class ZImageStruct(DiffusionModelStruct, DiffusionTransformerStruct):
@@ -2184,7 +2186,19 @@ class ZImageStruct(DiffusionModelStruct, DiffusionTransformerStruct):
                 x_pad_token_rname=x_pad_token_rname,
                 cap_pad_token_rname=cap_pad_token_rname,
                 layers_rname=layers_rname,
-                rope_embedder_rname=rope_embedder_rname
+                rope_embedder_rname=rope_embedder_rname,
+
+                # these fields are not valid in Z-Image model, just hard code to None
+                norm_in=None,
+                proj_in=None,
+                norm_out=None,
+                proj_out=None,
+                norm_in_rname=None,
+                proj_in_rname=None,
+                norm_out_rname=None,
+                proj_out_rname=None,
+                transformer_blocks=None,
+                transformer_blocks_rname=None
             )
         raise NotImplementedError(f"Unsupported module type: {type(module)}")
     
@@ -2207,7 +2221,7 @@ class ZImageStruct(DiffusionModelStruct, DiffusionTransformerStruct):
                     if block_rkey:
                         key_map[block_rkey].add(key)
         return {k: v for k, v in key_map.items() if v}
-##############################################
+
 
 
 DiffusionAttentionStruct.register_factory(Attention, DiffusionAttentionStruct._default_construct)
