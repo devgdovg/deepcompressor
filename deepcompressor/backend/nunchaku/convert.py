@@ -1,4 +1,4 @@
-"""Converts a DeepCompressor state dict to a Nunchaku state dict."""
+"""Program entrance for Nunchaku backend: converting a DeepCompressor state dict to a Nunchaku state dict."""
 
 import argparse
 import os

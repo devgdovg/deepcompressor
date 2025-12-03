@@ -1,3 +1,5 @@
+"""Functions for converting DeepCompressor state dict from Flux.1 dev models (e.g. Flux.1-dev,Flux.1-Fill-dev etc.) into Nunchaku state dict."""
+
 import torch
 
 from .common import convert_to_nunchaku_transformer_block_state_dict, update_state_dict
