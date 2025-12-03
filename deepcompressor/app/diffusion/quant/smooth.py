@@ -285,7 +285,7 @@ def smooth_diffusion_down_proj(
 ) -> dict[str, torch.Tensor]:
     logger = tools.logging.getLogger(f"{__name__}.SmoothQuant")
     # ffn down projection
-    module_key = ffn.down_proj_key.upper()
+    module_key = ffn.down_proj_key
     needs_quant = config.enabled_wgts and config.wgts.is_enabled_for(module_key)
     needs_quant = needs_quant or (config.enabled_ipts and config.ipts.is_enabled_for(module_key))
     if needs_quant and config.smooth.enabled_proj and config.smooth.proj.is_enabled_for(module_key):
