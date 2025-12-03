@@ -1,3 +1,4 @@
+import json
 import os
 import random
 
@@ -27,6 +28,28 @@ def load_dataset_yaml(meta_path: str, max_dataset_size: int = -1, repeat: int = 
     return ret
 
 
+def load_dataset_json(meta_path: str, max_dataset_size: int = -1, repeat: int = 4) -> dict:
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    names = list(meta.keys())
+    if max_dataset_size > 0:
+        random.Random(0).shuffle(names)
+        names = names[:max_dataset_size]
+        names = sorted(names)
+
+    ret = {"filename": [], "prompt": [], "meta_path": []}
+    idx = 0
+    for name in names:
+        prompt = meta[name]['prompt']
+        category = meta[name]['category']
+        for j in range(repeat):
+            ret["filename"].append(f"{name}-{category}-{j}")
+            ret["prompt"].append(prompt)
+            ret["meta_path"].append(meta_path)
+            idx += 1
+    return ret
+
+
 def get_dataset(
     name: str,
     config_name: str | None = None,
@@ -48,6 +71,17 @@ def get_dataset(
     if name.endswith((".yaml", ".yml")):
         dataset = datasets.Dataset.from_dict(
             load_dataset_yaml(name, max_dataset_size=max_dataset_size, repeat=repeat),
+            features=datasets.Features(
+                {
+                    "filename": datasets.Value("string"),
+                    "prompt": datasets.Value("string"),
+                    "meta_path": datasets.Value("string"),
+                }
+            ),
+        )
+    elif name.endswith((".json")):
+        dataset = datasets.Dataset.from_dict(
+            load_dataset_json(name, max_dataset_size=max_dataset_size, repeat=repeat),
             features=datasets.Features(
                 {
                     "filename": datasets.Value("string"),
