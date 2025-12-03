@@ -7,6 +7,9 @@ eval:
   num_steps: 9
   guidance_scale: 0
   protocol: fmeuler{num_steps}-g{guidance_scale}
+  benchmarks:
+    - "deepcompressor/dataset/MJHQ30KMETA.json"
+  num_samples: 300
 quant:
   calib:
     batch_size: 1
@@ -27,11 +30,6 @@ quant:
       - transformer_add_norm
       - attn_add
       - ffn_add
-    # skips:
-    # - transformer_norm
-    # - transformer_add_norm
-    # - attn_add
-    # - ffn_add
   ipts:
     calib_range:
       element_batch_size: 64
