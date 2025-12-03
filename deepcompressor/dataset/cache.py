@@ -343,18 +343,19 @@ class BaseCalibCacheLoader(ABC):
             for layer_idx, (layer_name, layer) in enumerate(named_layers.items()):
                 # region we first register hooks for caching activations
                 layer_hooks: list[Hook] = []
-                for module_name, module, needs_inputs, needs_outputs in hook_args[layer_name]:
-                    layer_hooks.extend(
-                        action.register(
-                            name=module_name,
-                            module=module,
-                            cache=cache[layer_name][module_name],
-                            info_mode=False,
-                            needs_inputs=needs_inputs,
-                            needs_outputs=needs_outputs,
+                if layer_name in hook_args:
+                    for module_name, module, needs_inputs, needs_outputs in hook_args[layer_name]:
+                        layer_hooks.extend(
+                            action.register(
+                                name=module_name,
+                                module=module,
+                                cache=cache[layer_name][module_name],
+                                info_mode=False,
+                                needs_inputs=needs_inputs,
+                                needs_outputs=needs_outputs,
+                            )
                         )
-                    )
-                hook_args.pop(layer_name)
+                    hook_args.pop(layer_name)
                 # endregion
                 if recomputes[layer_idx]:
                     if layers is None:
@@ -380,6 +381,7 @@ class BaseCalibCacheLoader(ABC):
                         if psutil.virtual_memory().percent > 90:
                             raise RuntimeError("memory usage > 90%%, aborting")
                         gc.collect()
+                    tbar.close()
                 else:
                     # region we then forward the layer to collect activations
                     device = next(layer.parameters()).device
@@ -415,12 +417,13 @@ class BaseCalibCacheLoader(ABC):
                     ]
                 gc.collect()
                 torch.cuda.empty_cache()
-                yield layer_name, (layer, cache[layer_name], layer_inputs)
+                yield layer_name, (layer, cache.get(layer_name, {}), layer_inputs)
                 # region clear layer cache
                 if clear_after_yield:
-                    for module_cache in cache[layer_name].values():
+                    for module_cache in cache.get(layer_name, {}).values():
                         module_cache.clear()
-                cache.pop(layer_name)
+                if layer_name in cache:
+                    cache.pop(layer_name)
                 del layer_inputs
                 gc.collect()
                 torch.cuda.empty_cache()

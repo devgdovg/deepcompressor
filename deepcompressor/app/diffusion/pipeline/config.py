@@ -362,7 +362,9 @@ class DiffusionPipelineConfig:
         pipeline = pipeline.to(device)
         model = pipeline.unet if hasattr(pipeline, "unet") else pipeline.transformer
         replace_fused_linear_with_concat_linear(model)
-        replace_up_block_conv_with_concat_conv(model)
+        # The quantization and inference for resblock_conv layer is not completed.
+        # So here we do not do any pre process to conv layers.
+        # replace_up_block_conv_with_concat_conv(model)
         if shift_activations:
             shift_input_activations(model)
         return pipeline

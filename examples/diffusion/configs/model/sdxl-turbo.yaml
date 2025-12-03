@@ -1,0 +1,40 @@
+pipeline:
+  name: sdxl-turbo
+eval:
+  num_steps: 4
+  guidance_scale: 0
+  protocol: eulera{num_steps}-g{guidance_scale}
+  benchmarks:
+    - "deepcompressor/dataset/MJHQ30KMETA.json"
+quant:
+  calib:
+    batch_size: 16
+    combine: false
+  wgts:
+    skips: 
+    - embed
+    - resblock_shortcut
+    - resblock_time_proj
+    - resblock_conv
+    - transformer_proj_in
+    - transformer_proj_out
+    - transformer_norm
+    - transformer_add_norm
+    - attn_add
+    - ffn_add
+    - down_sample
+    - up_sample
+  ipts:
+    skips: 
+    - embed
+    - resblock_shortcut
+    - resblock_time_proj
+    - resblock_conv
+    - transformer_proj_in
+    - transformer_proj_out
+    - transformer_norm
+    - transformer_add_norm
+    - attn_add
+    - ffn_add
+    - down_sample
+    - up_sample

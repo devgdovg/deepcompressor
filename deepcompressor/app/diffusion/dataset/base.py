@@ -10,7 +10,7 @@ import torch
 import torch.utils.data
 from torch.nn import functional as F
 
-from deepcompressor.utils.common import tree_collate, tree_map
+from deepcompressor.utils.common import tree_collate_combine, tree_collate_no_combine, tree_map
 
 __all__ = ["DiffusionDataset"]
 
@@ -62,5 +62,9 @@ class DiffusionDataset(torch.utils.data.Dataset):
 
         return data
 
-    def build_loader(self, **kwargs) -> torch.utils.data.DataLoader:
-        return torch.utils.data.DataLoader(self, collate_fn=tree_collate, **kwargs)
+    def build_loader(self, combine, **kwargs) -> torch.utils.data.DataLoader:
+        if combine:
+            fn = tree_collate_combine
+        else:
+            fn = tree_collate_no_combine
+        return torch.utils.data.DataLoader(self, collate_fn=fn, **kwargs)

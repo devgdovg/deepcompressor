@@ -34,6 +34,7 @@ quant:
     path: datasets/{dtype}/{model}/{protocol}/{data}/s128
     num_samples: 128
     num_workers: 8
+    combine: true
   wgts:
     dtype: null
     zero_point: null

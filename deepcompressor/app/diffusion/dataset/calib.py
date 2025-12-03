@@ -55,10 +55,13 @@ class DiffusionCalibCacheLoaderConfig(BaseDataLoaderConfig):
             Path to the dataset directory.
         num_workers (`int`):
             Number of workers for data loading.
+        combine (`bool`):
+            Whether to combine the batch into one tensor when tensors in the batch are exactly the same.
     """
 
     path: str
     num_workers: int = 8
+    combine: bool = True
 
     def build_dataset(self) -> "DiffusionCalibDataset":
         """Build the calibration dataset."""
@@ -186,7 +189,7 @@ class DiffusionCalibCacheLoader(BaseCalibCacheLoader):
             return super()._init_cache(name, module)
 
     def iter_samples(self) -> tp.Generator[ModuleForwardInput, None, None]:
-        dataloader = self.dataset.build_loader(
+        dataloader = self.dataset.build_loader(self.config.combine,
             batch_size=self.batch_size, shuffle=False, drop_last=True, num_workers=self.config.num_workers
         )
         for data in dataloader:

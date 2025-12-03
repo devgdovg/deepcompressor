@@ -14,7 +14,8 @@ __all__ = [
     "tree_map",
     "tree_copy_with_ref",
     "tree_split",
-    "tree_collate",
+    "tree_collate_combine",
+    "tree_collate_no_combine",
     "hash_str_to_int",
 ]
 
@@ -184,20 +185,29 @@ def tree_split(tree: tp.Any) -> list[tp.Any]:
     return ret
 
 
-def tree_collate(batch: list[tp.Any] | tuple[tp.Any, ...]) -> tp.Any:
-    """Collate function for tree-structured data."""
+def _tree_collate(combine: bool, batch: list[tp.Any] | tuple[tp.Any, ...]) -> tp.Any:
     if isinstance(batch[0], dict):
-        return {k: tree_collate([d[k] for d in batch]) for k in batch[0]}
+        return {k: _tree_collate(combine, [d[k] for d in batch]) for k in batch[0]}
     elif isinstance(batch[0], (list, tuple)):
-        return [tree_collate(samples) for samples in zip(*batch, strict=True)]
+        return [_tree_collate(combine, samples) for samples in zip(*batch, strict=True)]
     elif isinstance(batch[0], torch.Tensor):
         # if all tensors in batch are exactly the same, return the tensor itself
-        if all(torch.equal(batch[0], b) for b in batch):
+        if combine and all(torch.equal(batch[0], b) for b in batch):
             return batch[0]
         else:
             return torch.cat(batch)
     else:
         return batch[0]
+
+
+def tree_collate_combine(batch: list[tp.Any] | tuple[tp.Any, ...]) -> tp.Any:
+    """Collate function for tree-structured data."""
+    return _tree_collate(True, batch)
+
+
+def tree_collate_no_combine(batch: list[tp.Any] | tuple[tp.Any, ...]) -> tp.Any:
+    """Collate function for tree-structured data."""
+    return _tree_collate(False, batch)
 
 
 def hash_str_to_int(s: str) -> int:
