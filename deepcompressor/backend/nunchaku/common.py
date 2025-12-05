@@ -51,7 +51,7 @@ def convert_to_nunchaku_w4x4y16_linear_state_dict(
             bias = bias.add_((lora_up.to(dtype=torch.float64) @ lora_down @ shift).view(-1))
             bias = bias.to(dtype=dtype)
         lora = (lora_down.to(dtype=dtype), lora_up)
-    weight, scale, bias, smooth, lora, subscale = convert_to_nunchaku_w4x4y16_linear_weight(
+    weight, scale, _bias, smooth, lora, subscale = convert_to_nunchaku_w4x4y16_linear_weight(
         weight, scale=scale, bias=bias, smooth=smooth, lora=lora, float_point=float_point, subscale=subscale
     )
     state_dict: dict[str, torch.Tensor] = {}
@@ -59,7 +59,8 @@ def convert_to_nunchaku_w4x4y16_linear_state_dict(
     state_dict[scale_key] = scale
     if subscale is not None:
         state_dict[subscale_key] = subscale
-    state_dict["bias"] = bias
+    if bias is not None:
+        state_dict["bias"] = _bias
     state_dict["smooth_orig"] = smooth
     state_dict["smooth"] = torch.ones_like(smooth) if smooth_fused else smooth.clone()
     if lora is not None:
