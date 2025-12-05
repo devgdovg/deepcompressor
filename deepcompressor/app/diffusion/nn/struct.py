@@ -35,6 +35,12 @@ from diffusers.models.transformers.transformer_flux import (
     FluxTransformer2DModel,
     FluxTransformerBlock,
 )
+from diffusers.models.transformers.transformer_z_image import (
+    ZImageTransformerBlock,
+    ZImageTransformer2DModel,
+    TimestepEmbedder,
+    RopeEmbedder
+)
 from diffusers.models.transformers.transformer_sd3 import SD3Transformer2DModel
 from diffusers.models.unets.unet_2d import UNet2DModel
 from diffusers.models.unets.unet_2d_blocks import (
@@ -46,6 +52,7 @@ from diffusers.models.unets.unet_2d_blocks import (
     UpBlock2D,
 )
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
+from diffusers.pipelines.z_image.pipeline_z_image import ZImagePipeline
 from diffusers.pipelines import (
     FluxControlPipeline,
     FluxFillPipeline,
@@ -71,7 +78,7 @@ from deepcompressor.nn.struct.attn import (
 from deepcompressor.nn.struct.base import BaseModuleStruct
 from deepcompressor.utils.common import join_name
 
-from .attention import DiffusionAttentionProcessor
+from deepcompressor.app.diffusion.nn.attention import DiffusionAttentionProcessor
 
 # endregion
 
@@ -85,6 +92,7 @@ DIT_BLOCK_CLS = tp.Union[
     FluxSingleTransformerBlock,
     FluxTransformerBlock,
     SanaTransformerBlock,
+    ZImageTransformerBlock,
 ]
 UNET_BLOCK_CLS = tp.Union[
     DownBlock2D,
@@ -100,6 +108,7 @@ DIT_CLS = tp.Union[
     SD3Transformer2DModel,
     FluxTransformer2DModel,
     SanaTransformer2DModel,
+    ZImageTransformer2DModel,
 ]
 UNET_CLS = tp.Union[UNet2DModel, UNet2DConditionModel]
 MODEL_CLS = tp.Union[DIT_CLS, UNET_CLS]
@@ -112,6 +121,7 @@ DIT_PIPELINE_CLS = tp.Union[
     FluxControlPipeline,
     FluxFillPipeline,
     SanaPipeline,
+    ZImagePipeline,
 ]
 PIPELINE_CLS = tp.Union[UNET_PIPELINE_CLS, DIT_PIPELINE_CLS]
 
@@ -268,15 +278,18 @@ class DiffusionModelStruct(DiffusionBlockStruct):
 
     @classmethod
     def _get_default_key_map(cls) -> dict[str, set[str]]:
-        unet_key_map = UNetStruct._get_default_key_map()
-        dit_key_map = DiTStruct._get_default_key_map()
-        flux_key_map = FluxStruct._get_default_key_map()
         key_map: dict[str, set[str]] = defaultdict(set)
-        for rkey, keys in unet_key_map.items():
-            key_map[rkey].update(keys)
-        for rkey, keys in dit_key_map.items():
-            key_map[rkey].update(keys)
-        for rkey, keys in flux_key_map.items():
+        # unet_key_map = UNetStruct._get_default_key_map()
+        # dit_key_map = DiTStruct._get_default_key_map()
+        # flux_key_map = FluxStruct._get_default_key_map()
+        # for rkey, keys in unet_key_map.items():
+        #     key_map[rkey].update(keys)
+        # for rkey, keys in dit_key_map.items():
+        #     key_map[rkey].update(keys)
+        # for rkey, keys in flux_key_map.items():
+        #     key_map[rkey].update(keys)
+        zimage_key_map = ZImageStruct._get_default_key_map()
+        for rkey, keys in zimage_key_map.items():
             key_map[rkey].update(keys)
         return {k: v for k, v in key_map.items() if v}
 
@@ -362,7 +375,7 @@ class DiffusionAttentionStruct(AttentionStruct):
             o_proj_rname = "to_out.0"
             assert isinstance(o_proj, nn.Linear)
         elif parent is not None:
-            assert isinstance(parent.module, FluxSingleTransformerBlock)
+            assert isinstance(parent.module, (FluxSingleTransformerBlock, ZImageTransformerBlock))
             assert isinstance(parent.module.proj_out, ConcatLinear)
             assert len(parent.module.proj_out.linears) == 2
             o_proj = parent.module.proj_out.linears[0]
@@ -705,6 +718,15 @@ class DiffusionTransformerBlockStruct(TransformerBlockStruct, DiffusionBlockStru
             ffn, ffn_rname = module.ff, "ff"
             pre_add_ffn_norm, pre_add_ffn_norm_rname = module.norm2_context, "norm2_context"
             add_ffn, add_ffn_rname = module.ff_context, "ff_context"
+        elif isinstance(module, ZImageTransformerBlock):
+            parallel = False
+            norm_type, add_norm_type = "rms_norm", None
+            pre_attn_norms, pre_attn_norm_rnames = [module.attention_norm1], ["attention_norm1"]
+            attns, attn_rnames = [module.attention], ["attention"]
+            pre_attn_add_norms, pre_attn_add_norm_rnames = [], []
+            pre_ffn_norm, pre_ffn_norm_rname = module.ffn_norm1, "ffn_norm1"
+            ffn, ffn_rname = module.feed_forward, "feed_forward"
+            pre_add_ffn_norm, pre_add_ffn_norm_rname, add_ffn, add_ffn_rname = None, "", None, ""
         else:
             raise NotImplementedError(f"Unsupported module type: {type(module)}")
         return DiffusionTransformerBlockStruct(
@@ -1696,6 +1718,8 @@ class DiTStruct(DiffusionModelStruct, DiffusionTransformerStruct):
             module = module.transformer
         if isinstance(module, FluxTransformer2DModel):
             return FluxStruct.construct(module, parent=parent, fname=fname, rname=rname, rkey=rkey, idx=idx, **kwargs)
+        elif isinstance(module, ZImageTransformer2DModel):
+            return ZImageStruct.construct(module, parent=parent, fname=fname, rname=rname, rkey=rkey, idx=idx, **kwargs)
         else:
             if isinstance(module, PixArtTransformer2DModel):
                 input_embed, input_embed_rname = module.pos_embed, "pos_embed"
@@ -1946,6 +1970,260 @@ class FluxStruct(DiTStruct):
         return {k: v for k, v in key_map.items() if v}
 
 
+@dataclass(kw_only=True)
+class ZImageStruct(DiffusionModelStruct, DiffusionTransformerStruct):
+    # region relative keys
+    # TODO
+    noise_refiner_rkey: tp.ClassVar[str] = "nrk"
+    context_refiner_rkey: tp.ClassVar[str] = "crk"
+    layers_rkey: tp.ClassVar[str] = "lk"
+    # endregion
+    
+    module: ZImageTransformer2DModel = field(repr=False, kw_only=False)
+    """the module of ZImageTransformer2DModel"""
+    
+    # region child modules
+    all_x_embedder: nn.ModuleDict
+    all_final_layer: nn.ModuleDict
+    noise_refiner: nn.ModuleList
+    context_refiner: nn.ModuleList
+    t_embedder: TimestepEmbedder
+    cap_embedder: nn.Sequential
+    x_pad_token: nn.Parameter
+    cap_pad_token: nn.Parameter
+    layers: nn.ModuleList
+    rope_embedder: RopeEmbedder
+    # endregion
+    
+    # region relative names
+    all_x_embedder_rname: str
+    all_final_layer_rname: str
+    noise_refiner_rname: str
+    context_refiner_rname: str
+    t_embedder_rname: str
+    cap_embedder_rname: str
+    x_pad_token_rname: str
+    cap_pad_token_rname: str
+    layers_rname: str
+    rope_embedder_rname: str
+    # endregion
+    
+    # region absolute names
+    noise_refiner_names: list[str] = field(init=False, repr=False)
+    context_refiner_names: list[str] = field(init=False, repr=False)
+    layers_names: list[str] = field(init=False, repr=False)
+    # endregion
+    
+    # region absolute keys
+    # TODO
+    # endregion
+    
+    # region child structs
+    noise_refiner_structs: list[DiffusionTransformerBlockStruct] = field(init=False)
+    context_refiner_structs: list[DiffusionTransformerBlockStruct] = field(init=False)
+    layers_structs: list[DiffusionTransformerBlockStruct] = field(init=False)
+    # endregion
+    
+    
+    @property
+    def num_blocks(self) -> int:
+        return len(self.noise_refiner_structs) + len(self.context_refiner_structs) + len(self.layers_structs)
+
+    @property
+    def block_structs(self) -> list[DiffusionTransformerBlockStruct]:
+        return [*self.noise_refiner_structs, *self.context_refiner_structs, *self.layers_structs]
+
+    @property
+    def block_names(self) -> list[str]:
+        return [*self.noise_refiner_names, *self.context_refiner_names, *self.layers_names]
+    
+    def __post_init__(self) -> None:
+        BaseModuleStruct.__post_init__(self)
+        noise_refiner_indexed_rnames = [
+            f"{self.noise_refiner_rname}.{idx}" for idx in range(len(self.noise_refiner))
+        ]
+        self.noise_refiner_names = [join_name(self.name, indexed_rname) for indexed_rname in noise_refiner_indexed_rnames]
+        
+        context_refiner_indexed_rnames = [
+            f"{self.context_refiner_rname}.{idx}" for idx in range(len(self.context_refiner))
+        ]
+        self.context_refiner_names = [join_name(self.name, indexed_rname) for indexed_rname in context_refiner_indexed_rnames]
+        
+        layers_indexed_rnames = [
+            f"{self.layers_rname}.{idx}" for idx in range(len(self.layers))
+        ]
+        self.layers_names = [join_name(self.name, indexed_rname) for indexed_rname in layers_indexed_rnames]
+        
+        self.pre_module_structs = OrderedDict()
+        self.post_module_structs = OrderedDict()
+        
+        self.noise_refiner_structs = [
+            self.transformer_block_struct_cls.construct(
+                block,
+                parent=self,
+                fname="noise_refiner",
+                rname=rname,
+                rkey=self.noise_refiner_rkey, # TODO
+                idx=idx,
+            )
+            for idx, (block, rname) in enumerate(
+                zip(self.noise_refiner, noise_refiner_indexed_rnames, strict=True)
+            )
+        ]
+        
+        self.context_refiner_structs = [
+            self.transformer_block_struct_cls.construct(
+                block,
+                parent=self,
+                fname="context_refiner",
+                rname=rname,
+                rkey=self.context_refiner_rkey, # TODO
+                idx=idx,
+            )
+            for idx, (block, rname) in enumerate(
+                zip(self.context_refiner, context_refiner_indexed_rnames, strict=True)
+            )
+        ]
+        
+        self.layers_structs = [
+            self.transformer_block_struct_cls.construct(
+                block,
+                parent=self,
+                fname="layers",
+                rname=rname,
+                rkey=self.layers_rkey, # TODO
+                idx=idx,
+            )
+            for idx, (block, rname) in enumerate(
+                zip(self.layers, layers_indexed_rnames, strict=True)
+            )
+        ]
+        
+    
+    def _get_iter_block_activations_args(
+        self, **input_kwargs
+    ) -> tuple[list[nn.Module], list[DiffusionModuleStruct | DiffusionBlockStruct], list[bool], list[bool]]:
+        layers, layer_structs, recomputes, use_prev_layer_outputs = [], [], [], []
+        
+        layers.extend(self.noise_refiner)
+        layer_structs.extend(self.noise_refiner_structs)
+        use_prev_layer_outputs.append(False)
+        use_prev_layer_outputs.extend([True] * (len(self.noise_refiner) - 1))
+        recomputes.extend([False] * len(self.noise_refiner))
+        
+        layers.extend(self.context_refiner)
+        layer_structs.extend(self.context_refiner_structs)
+        use_prev_layer_outputs.append(False)
+        use_prev_layer_outputs.extend([True] * (len(self.context_refiner) - 1))
+        recomputes.extend([False] * len(self.context_refiner))
+        
+        layers.extend(self.layers)
+        layer_structs.extend(self.layers_structs)
+        use_prev_layer_outputs.append(False)
+        use_prev_layer_outputs.extend([True] * (len(self.layers) - 1))
+        recomputes.extend([False] * len(self.layers))
+        
+        return layers, layer_structs, recomputes, use_prev_layer_outputs
+
+    
+    def get_prev_module_keys(self) -> tuple[str, ...]:
+        return tuple()
+
+
+    def get_post_module_keys(self) -> tuple[str, ...]:
+        return tuple()
+
+
+    @staticmethod
+    def _default_construct(
+        module: tp.Union[ZImagePipeline, ZImageTransformer2DModel],
+        /,
+        parent: tp.Optional[BaseModuleStruct] = None,
+        fname: str = "",
+        rname: str = "",
+        rkey: str = "",
+        idx: int = 0,
+        **kwargs,
+    ) -> "ZImageStruct":
+        if isinstance(module, ZImagePipeline):
+            module = module.transformer
+        if isinstance(module, ZImageTransformer2DModel):
+            all_x_embedder, all_x_embedder_rname = module.all_x_embedder, "all_x_embedder"
+            all_final_layer, all_final_layer_rname = module.all_final_layer, "all_final_layer"
+            noise_refiner, noise_refiner_rname = module.noise_refiner, "noise_refiner"
+            context_refiner, context_refiner_rname = module.context_refiner, "context_refiner"
+            t_embedder, t_embedder_rname = module.t_embedder, "t_embedder"
+            cap_embedder, cap_embedder_rname = module.cap_embedder, "cap_embedder"
+            x_pad_token, x_pad_token_rname = module.x_pad_token, "x_pad_token"
+            cap_pad_token, cap_pad_token_rname = module.cap_pad_token, "cap_pad_token"
+            layers, layers_rname = module.layers, "layers"
+            rope_embedder, rope_embedder_rname = module.rope_embedder, "rope_embedder"
+            return ZImageStruct(
+                module=module,
+                parent=parent,
+                fname=fname,
+                idx=idx,
+                rname=rname,
+                rkey=rkey,
+                
+                all_x_embedder=all_x_embedder,
+                all_final_layer=all_final_layer,
+                noise_refiner=noise_refiner,
+                context_refiner=context_refiner,
+                t_embedder=t_embedder,
+                cap_embedder=cap_embedder,
+                x_pad_token=x_pad_token,
+                cap_pad_token=cap_pad_token,
+                layers=layers,
+                rope_embedder=rope_embedder,
+                
+                all_x_embedder_rname=all_x_embedder_rname,
+                all_final_layer_rname=all_final_layer_rname,
+                noise_refiner_rname=noise_refiner_rname,
+                context_refiner_rname=context_refiner_rname,
+                t_embedder_rname=t_embedder_rname,
+                cap_embedder_rname=cap_embedder_rname,
+                x_pad_token_rname=x_pad_token_rname,
+                cap_pad_token_rname=cap_pad_token_rname,
+                layers_rname=layers_rname,
+                rope_embedder_rname=rope_embedder_rname,
+
+                # these fields are not valid in Z-Image model, just hard code to None
+                norm_in=None,
+                proj_in=None,
+                norm_out=None,
+                proj_out=None,
+                norm_in_rname=None,
+                proj_in_rname=None,
+                norm_out_rname=None,
+                proj_out_rname=None,
+                transformer_blocks=None,
+                transformer_blocks_rname=None
+            )
+        raise NotImplementedError(f"Unsupported module type: {type(module)}")
+    
+    @classmethod
+    def _get_default_key_map(cls) -> dict[str, set[str]]:
+        key_map: dict[str, set[str]] = defaultdict(set)
+        for block_rkey, block_cls in (
+            (cls.noise_refiner_rkey, cls.transformer_block_struct_cls),
+            (cls.context_refiner_rkey, cls.transformer_block_struct_cls),
+            (cls.layers_rkey, cls.transformer_block_struct_cls),
+        ):
+            block_key = block_rkey
+            block_key_map = block_cls._get_default_key_map()
+            for rkey, keys in block_key_map.items():
+                brkey = join_name(block_rkey, rkey, sep="_")
+                for key in keys:
+                    key = join_name(block_key, key, sep="_")
+                    key_map[rkey].add(key)
+                    key_map[brkey].add(key)
+                    if block_rkey:
+                        key_map[block_rkey].add(key)
+        return {k: v for k, v in key_map.items() if v}
+
+
+
 DiffusionAttentionStruct.register_factory(Attention, DiffusionAttentionStruct._default_construct)
 
 DiffusionFeedForwardStruct.register_factory(
@@ -1962,8 +2240,16 @@ FluxStruct.register_factory(
     tp.Union[FluxPipeline, FluxControlPipeline, FluxTransformer2DModel], FluxStruct._default_construct
 )
 
+ZImageStruct.register_factory(
+    tp.Union[ZImagePipeline, ZImageTransformer2DModel], ZImageStruct._default_construct
+)
+
 DiTStruct.register_factory(tp.Union[DIT_PIPELINE_CLS, DIT_CLS], DiTStruct._default_construct)
 
 DiffusionTransformerStruct.register_factory(Transformer2DModel, DiffusionTransformerStruct._default_construct)
 
 DiffusionModelStruct.register_factory(tp.Union[PIPELINE_CLS, MODEL_CLS], DiffusionModelStruct._default_construct)
+
+
+if __name__ == "__main__":
+    print(ZImageStruct._get_default_key_map())

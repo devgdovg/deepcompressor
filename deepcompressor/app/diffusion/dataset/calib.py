@@ -15,6 +15,7 @@ from diffusers.models.transformers.transformer_flux import (
     FluxSingleTransformerBlock,
     FluxTransformerBlock,
 )
+from diffusers.models.transformers.transformer_z_image import ZImageTransformerBlock
 from omniconfig import configclass
 
 from deepcompressor.data.cache import (
@@ -168,6 +169,18 @@ class DiffusionCalibCacheLoader(BaseCalibCacheLoader):
                     OrderedDict(
                         hidden_states=TensorCache(channels_dim=-1, reshape=LinearReshapeFn()),
                         temb=TensorCache(channels_dim=1, reshape=LinearReshapeFn()),
+                    )
+                ),
+                outputs=TensorCache(channels_dim=-1, reshape=LinearReshapeFn()),
+            )
+        elif isinstance(module, ZImageTransformerBlock):
+            return IOTensorsCache(
+                inputs=TensorsCache(
+                    OrderedDict(
+                        x=TensorCache(channels_dim=-1, reshape=LinearReshapeFn()),
+                        attn_mask=TensorCache(channels_dim=-1, reshape=LinearReshapeFn()),
+                        freqs_cis=TensorCache(channels_dim=-1, reshape=LinearReshapeFn()),
+                        # TODO verify
                     )
                 ),
                 outputs=TensorCache(channels_dim=-1, reshape=LinearReshapeFn()),

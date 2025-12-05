@@ -1,0 +1,9 @@
+echo "--load-from /data/dongd/dc_saved_model/Z_IMAGE_TURBO_20251203_0031"
+
+TORCH_CUDA_ARCH_LIST="9.0" python3 -m deepcompressor.app.diffusion.ptq \
+    examples/diffusion/configs/model/z-image-turbo.yaml examples/diffusion/configs/svdquant/int4.yaml \
+    --load-from /data/dongd/dc_saved_model/Z_IMAGE_TURBO_20251203_0031 --skip-eval true
+
+echo $?
+
+# nohup z_image_scripts/z_image_turbo_gen_image_after_quant.sh > z_image_scripts/z_image_turbo_gen_image_after_quant_20251203_1136.log 2>&1 &

@@ -20,7 +20,7 @@ eval:
   gen_root: "{output}/{job}"
   ref_root: baselines/{dtype}/{model}/{protocol}
   gt_stats_root: benchmarks/stats
-  num_gpus: 8
+  num_gpus: 1
   batch_size_per_gpu: 1
   chunk_start: 0
   chunk_step: 1

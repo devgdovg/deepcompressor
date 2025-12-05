@@ -380,6 +380,7 @@ class BaseCalibCacheLoader(ABC):
                         if psutil.virtual_memory().percent > 90:
                             raise RuntimeError("memory usage > 90%%, aborting")
                         gc.collect()
+                    tbar.close()
                 else:
                     # region we then forward the layer to collect activations
                     device = next(layer.parameters()).device

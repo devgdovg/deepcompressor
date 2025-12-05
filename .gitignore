@@ -173,3 +173,6 @@ runs/
 exps/
 wandb
 wandb/
+
+# generated calib data
+datasets/
