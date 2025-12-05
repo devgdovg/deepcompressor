@@ -580,11 +580,11 @@ class DiffusionTransformerBlockStruct(TransformerBlockStruct, DiffusionBlockStru
         super().__post_init__()
         self.norm_key = join_name(self.key, self.norm_rkey, sep="_")
         self.add_norm_key = join_name(self.key, self.add_norm_rkey, sep="_")
-        self.attn_norm_structs = [
+        self.pre_attn_norm_structs = [
             DiffusionModuleStruct(norm, parent=self, fname="pre_attn_norm", rname=rname, rkey=self.norm_rkey, idx=idx)
             for idx, (norm, rname) in enumerate(zip(self.pre_attn_norms, self.pre_attn_norm_rnames, strict=True))
         ]
-        self.add_attn_norm_structs = [
+        self.pre_attn_add_norm_structs = [
             DiffusionModuleStruct(
                 norm, parent=self, fname="pre_attn_add_norm", rname=rname, rkey=self.add_norm_rkey, idx=idx
             )
@@ -606,10 +606,10 @@ class DiffusionTransformerBlockStruct(TransformerBlockStruct, DiffusionBlockStru
             )
 
     def named_key_modules(self) -> tp.Generator[tp.Tuple[str, str, nn.Module, BaseModuleStruct, str], None, None]:
-        for attn_norm in self.attn_norm_structs:
+        for attn_norm in self.pre_attn_norm_structs:
             if attn_norm.module is not None:
                 yield from attn_norm.named_key_modules()
-        for add_attn_norm in self.add_attn_norm_structs:
+        for add_attn_norm in self.pre_attn_add_norm_structs:
             if add_attn_norm.module is not None:
                 yield from add_attn_norm.named_key_modules()
         for attn_struct in self.attn_structs:
