@@ -1,0 +1,64 @@
+pipeline:
+  name: z-image-turbo
+  dtype: torch.bfloat16
+collect:
+  root: /data/dongd/dc_calib/datasets/{dtype}/{model}/{protocol}/{data}/s128
+eval:
+  num_steps: 9
+  guidance_scale: 0
+  protocol: fmeuler{num_steps}-g{guidance_scale}
+  benchmarks:
+    - "deepcompressor/dataset/MJHQ30KMETA.json"
+  num_samples: 300
+quant:
+  calib:
+    batch_size: 1
+    path: datasets/{dtype}/{model}/{protocol}/{data}/s128
+    num_samples: 128
+    num_workers: 1
+  wgts:
+    calib_range:
+      element_batch_size: 64
+      sample_batch_size: 16
+      element_size: 512
+      sample_size: -1
+    low_rank:
+      rank: 64
+      sample_batch_size: 16
+      sample_size: -1
+      skips:
+      - transformer_norm
+      - transformer_add_norm
+      - attn_add
+      - ffn_add
+  ipts:
+    calib_range:
+      element_batch_size: 64
+      sample_batch_size: 16
+      element_size: 512
+      sample_size: -1
+    skips: 
+    - transformer_norm
+    - transformer_add_norm
+    - attn_add
+    - ffn_add
+  opts:
+    calib_range:
+      element_batch_size: 64
+      sample_batch_size: 16
+      element_size: 512
+      sample_size: -1
+  smooth:
+    proj:
+      element_batch_size: -1
+      sample_batch_size: 16
+      element_size: -1
+      sample_size: -1
+      skips:
+      - transformer_norm
+      - transformer_add_norm
+      - attn_add
+      - ffn_add
+    attn:
+      sample_batch_size: 16
+      sample_size: -1

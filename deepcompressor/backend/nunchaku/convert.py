@@ -7,6 +7,7 @@ import safetensors.torch
 import torch
 import tqdm
 
+from .z_image import convert_to_nunchaku_z_image_state_dicts
 from .flux import convert_to_nunchaku_flux_state_dicts
 
 
@@ -16,6 +17,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-root", type=str, default="", help="root to the output checkpoint directory.")
     parser.add_argument("--model-name", type=str, default=None, help="name of the model.")
     parser.add_argument("--float-point", action="store_true", help="use float-point 4-bit quantization.")
+    parser.add_argument("--dry-run", type=bool, default=False, help="if True, state dicts will be NOT be saved")
     args = parser.parse_args()
     if not args.output_root:
         args.output_root = args.quant_path
@@ -26,25 +28,46 @@ if __name__ == "__main__":
     else:
         model_name = args.model_name
     assert model_name, "Model name must be provided."
-    assert "flux" in model_name.lower(), "Only Flux models are supported."
+    assert "flux" in model_name.lower() or "z-image" in model_name.lower(), f"{model_name} model is NOT supported so far."
     state_dict_path = os.path.join(args.quant_path, "model.pt")
     scale_dict_path = os.path.join(args.quant_path, "scale.pt")
     smooth_dict_path = os.path.join(args.quant_path, "smooth.pt")
     branch_dict_path = os.path.join(args.quant_path, "branch.pt")
-    map_location = "cuda" if torch.cuda.is_available() and torch.cuda.device_count() > 0 else "cpu"
+    map_location = "cuda:4" if torch.cuda.is_available() and torch.cuda.device_count() > 0 else "cpu"
     state_dict = torch.load(state_dict_path, map_location=map_location)
     scale_dict = torch.load(scale_dict_path, map_location="cpu")
     smooth_dict = torch.load(smooth_dict_path, map_location=map_location) if os.path.exists(smooth_dict_path) else {}
     branch_dict = torch.load(branch_dict_path, map_location=map_location) if os.path.exists(branch_dict_path) else {}
-    converted_state_dict, other_state_dict = convert_to_nunchaku_flux_state_dicts(
-        state_dict=state_dict,
-        scale_dict=scale_dict,
-        smooth_dict=smooth_dict,
-        branch_dict=branch_dict,
-        float_point=args.float_point,
-    )
-    output_dirpath = os.path.join(args.output_root, model_name)
-    os.makedirs(output_dirpath, exist_ok=True)
-    safetensors.torch.save_file(converted_state_dict, os.path.join(output_dirpath, "transformer_blocks.safetensors"))
-    safetensors.torch.save_file(other_state_dict, os.path.join(output_dirpath, "unquantized_layers.safetensors"))
-    print(f"Quantized model saved to {output_dirpath}.")
+    if "flux" in model_name.lower():
+        converted_state_dict, other_state_dict = convert_to_nunchaku_flux_state_dicts(
+            state_dict=state_dict,
+            scale_dict=scale_dict,
+            smooth_dict=smooth_dict,
+            branch_dict=branch_dict,
+            float_point=args.float_point,
+        )
+    elif "z-image" in model_name.lower():
+        if any("refiner" in k for k in smooth_dict):
+            skip_refiners = False
+        else:
+            skip_refiners = True
+        print(f"    - skip_refiners = {skip_refiners}")
+        converted_state_dict, other_state_dict = convert_to_nunchaku_z_image_state_dicts(
+            model_dict=state_dict,
+            scale_dict=scale_dict,
+            smooth_dict=smooth_dict,
+            branch_dict=branch_dict,
+            float_point=args.float_point,
+            skip_refiners=skip_refiners,
+        )
+    else:
+        raise ValueError(f"{model_name} model is NOT supported so far.")
+
+    if args.dry_run:
+        print(f"Program in DRY RUN mode. Quantized checkpoints NOT saved.")
+    else:
+        output_dirpath = os.path.join(args.output_root, model_name)
+        os.makedirs(output_dirpath, exist_ok=True)
+        safetensors.torch.save_file(converted_state_dict, os.path.join(output_dirpath, "transformer_blocks.safetensors"))
+        safetensors.torch.save_file(other_state_dict, os.path.join(output_dirpath, "unquantized_layers.safetensors"))
+        print(f"Quantized model saved to {output_dirpath}.")
