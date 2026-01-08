@@ -24,6 +24,7 @@ from deepcompressor.quantizer.processor import Quantizer
 from deepcompressor.utils import tools
 from deepcompressor.utils.hooks import AccumBranchHook, ProcessHook
 
+from .customized.zimage import check_z_image_customized_path, build_customized_z_image_pipeline
 from ....nn.patch.linear import ConcatLinear, ShiftedLinear
 from ....nn.patch.lowrank import LowRankBranch
 from ..nn.patch import (
@@ -349,6 +350,8 @@ class DiffusionPipelineConfig:
                 path = "black-forest-labs/FLUX.1-schnell"
             elif name == "z-image-turbo":
                 path = "Tongyi-MAI/Z-Image-Turbo"
+            elif name == "z-image-customized":
+                assert check_z_image_customized_path(path), f"Invalid Path for z-image-customized {path}."
             else:
                 raise ValueError(f"Path for {name} is not specified.")
         if name in ["flux.1-canny-dev", "flux.1-depth-dev"]:
@@ -364,6 +367,8 @@ class DiffusionPipelineConfig:
                 pipeline = SanaPipeline.from_pretrained(path, torch_dtype=dtype)
         elif name == "z-image-turbo":
             pipeline = ZImagePipeline.from_pretrained(path, torch_dtype=dtype, low_cpu_mem_usage=False)
+        elif name == "z-image-customized":
+            pipeline = build_customized_z_image_pipeline(name, path, dtype, device)
         else:
             pipeline = AutoPipelineForText2Image.from_pretrained(path, torch_dtype=dtype)
         pipeline = pipeline.to(device)

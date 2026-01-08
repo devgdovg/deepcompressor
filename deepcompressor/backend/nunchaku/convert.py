@@ -33,7 +33,7 @@ if __name__ == "__main__":
     scale_dict_path = os.path.join(args.quant_path, "scale.pt")
     smooth_dict_path = os.path.join(args.quant_path, "smooth.pt")
     branch_dict_path = os.path.join(args.quant_path, "branch.pt")
-    map_location = "cuda:4" if torch.cuda.is_available() and torch.cuda.device_count() > 0 else "cpu"
+    map_location = "cuda:1" if torch.cuda.is_available() and torch.cuda.device_count() > 0 else "cpu"
     state_dict = torch.load(state_dict_path, map_location=map_location)
     scale_dict = torch.load(scale_dict_path, map_location="cpu")
     smooth_dict = torch.load(smooth_dict_path, map_location=map_location) if os.path.exists(smooth_dict_path) else {}
@@ -51,7 +51,7 @@ if __name__ == "__main__":
             skip_refiners = False
         else:
             skip_refiners = True
-        print(f"    - skip_refiners = {skip_refiners}")
+        print(f"    - skip_refiners = {skip_refiners}, float_point = {type(args.float_point)} {args.float_point}")
         converted_state_dict, other_state_dict = convert_to_nunchaku_z_image_state_dicts(
             model_dict=state_dict,
             scale_dict=scale_dict,

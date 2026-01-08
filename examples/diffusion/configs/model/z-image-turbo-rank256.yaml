@@ -24,7 +24,7 @@ quant:
       element_size: 512
       sample_size: -1
     low_rank:
-      rank: 128
+      rank: 256
       sample_batch_size: 16
       sample_size: -1
       skips:
