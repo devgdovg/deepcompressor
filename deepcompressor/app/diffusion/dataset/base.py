@@ -39,6 +39,9 @@ class DiffusionDataset(torch.utils.data.Dataset):
         return len(self.filepaths)
 
     def __getitem__(self, idx) -> dict[str, tp.Any]:
+
+        # TODO verfify ZImage data loading.
+
         data = np.load(self.filepaths[idx], allow_pickle=True).item()
         if isinstance(data["input_args"][0], str):
             name = data["input_args"][0]

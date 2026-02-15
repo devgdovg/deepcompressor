@@ -194,6 +194,7 @@ def convert_to_nunchaku_transformer_block_state_dict(
             print(
                 f"  - Converting {block_name} weights of {candidate_local_names} to {converted_local_name}."
                 f" (smooth_fused={smooth_fused}, shifted={shift is not None}, float_point={float_point})"
+                f" smooth={type(smooth)}, branch={type(branch)}, bias={type(bias)}, shift={type(shift)}"
             )
             update_state_dict(
                 converted,

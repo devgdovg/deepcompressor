@@ -16,6 +16,7 @@ _C = load(
     extra_cuda_cflags=[
         "-O3",
         "-std=c++20",
+        "-I/usr/local/cuda/include",
         "-U__CUDA_NO_HALF_OPERATORS__",
         "-U__CUDA_NO_HALF_CONVERSIONS__",
         "-U__CUDA_NO_HALF2_OPERATORS__",

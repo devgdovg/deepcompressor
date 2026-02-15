@@ -192,10 +192,10 @@ def tree_collate(batch: list[tp.Any] | tuple[tp.Any, ...]) -> tp.Any:
         return [tree_collate(samples) for samples in zip(*batch, strict=True)]
     elif isinstance(batch[0], torch.Tensor):
         # if all tensors in batch are exactly the same, return the tensor itself
-        if all(torch.equal(batch[0], b) for b in batch):
-            return batch[0]
-        else:
-            return torch.cat(batch)
+        # if all(torch.equal(batch[0], b) for b in batch):
+        #     return batch[0]
+        # else:
+        return torch.cat(batch)
     else:
         return batch[0]
 

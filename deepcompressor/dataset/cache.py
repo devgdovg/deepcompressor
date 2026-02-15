@@ -311,7 +311,7 @@ class BaseCalibCacheLoader(ABC):
             if early_stop_module is not None:
                 forward_hooks.append(early_stop_module.register_forward_hook(EarlyStopHook()))
             with torch.inference_mode():
-                device = "cuda" if torch.cuda.is_available() else "cpu"
+                device = "cuda:1" if torch.cuda.is_available() else "cpu"
                 tbar = tqdm(
                     desc="collecting acts info",
                     leave=False,
@@ -380,6 +380,7 @@ class BaseCalibCacheLoader(ABC):
                         if psutil.virtual_memory().percent > 90:
                             raise RuntimeError("memory usage > 90%%, aborting")
                         gc.collect()
+                    tbar.close()
                 else:
                     # region we then forward the layer to collect activations
                     device = next(layer.parameters()).device
